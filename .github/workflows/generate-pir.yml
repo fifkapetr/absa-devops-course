@@ -76,8 +76,10 @@ jobs:
               exit 1
             fi
           done
-          if grep -qi "applicantName" "incident/$INCIDENT/postmortem.md" "incident/$INCIDENT/exec-summary.md"; then
-            echo "::error::the documents contain an applicantName field; personal data is not allowed (OPS-060, POL-070)"
+          # a quoted applicant name (not the redacted placeholder) or an e-mail address means personal data leaked
+          if grep -qE '"applicantName":"[^"[]' "incident/$INCIDENT/postmortem.md" "incident/$INCIDENT/exec-summary.md" \
+             || grep -qE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}' "incident/$INCIDENT/postmortem.md" "incident/$INCIDENT/exec-summary.md"; then
+            echo "::error::the documents contain an applicant name or an e-mail address; personal data is not allowed (OPS-060, POL-070)"
             exit 1
           fi
 
