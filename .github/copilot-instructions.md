@@ -65,6 +65,8 @@ Tredgate Loan is a teaching app, not a product. Everything runs locally with Nod
 - `incident/` - Recorded incidents (logs, chat export, e-mails, ticket) used for postmortem exercises
 - `templates/` - Postmortem and executive summary templates (OPS-040)
 - `.github/skills/loan-handbook-search/` - Skill describing how to use the search API
+- `.github/agents/` - Custom agents: `pir-writer` (postmortem from an incident folder), `ops-reviewer` (read-only infrastructure review against `.github/ops-review-checklist.md`)
+- `.github/workflows/generate-pir.yml` - Manual workflow that runs `pir-writer` in Copilot CLI and uploads the postmortem as an artifact
 - `logs/` - Runtime logs (generated, not committed)
 
 ## Commands

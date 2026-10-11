@@ -1,0 +1,102 @@
+name: Generate postmortem (PIR)
+
+# Writes the postmortem and executive summary for one recorded incident with the
+# pir-writer custom agent (.github/agents/pir-writer.agent.md) running in Copilot CLI.
+# Nothing is committed: both documents are uploaded as an artifact and shown in the job summary.
+#
+# Authentication: the built-in GITHUB_TOKEN with the `copilot-requests: write` permission.
+# This requires the organization policy "Allow use of Copilot CLI billed to the organization".
+# To bill a user instead, create a fine-grained personal access token with the
+# "Copilot Requests" permission, store it as the repository secret COPILOT_PAT and replace
+# the env of the "Write the postmortem" step with:
+#   COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+# (the copilot-requests permission is then not needed).
+
+on:
+  workflow_dispatch:
+    inputs:
+      incident:
+        description: Incident id, e.g. INC-20261007-01 (folder under incident/)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  copilot-requests: write
+
+jobs:
+  postmortem:
+    runs-on: ubuntu-latest
+    env:
+      INCIDENT: ${{ inputs.incident }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check the incident folder
+        run: |
+          if [ ! -d "incident/$INCIDENT" ]; then
+            echo "::error::incident/$INCIDENT does not exist. Available: $(ls incident | grep '^INC-' | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "Incident folder: incident/$INCIDENT"
+          ls -la "incident/$INCIDENT" "incident/$INCIDENT/comms"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Install dependencies (handbook search for the agent)
+        run: npm ci
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Write the postmortem
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        # The agent may write files and may run only the handbook search. Non-interactive runs deny
+        # everything that is not pre-approved; --no-ask-user stops it from asking questions.
+        run: |
+          copilot --agent pir-writer \
+            -p "Write the postmortem for incident/$INCIDENT: read comms/*, ticket.json, logs/metrics.csv and analysis.md if present, cite every fact, and write incident/$INCIDENT/postmortem.md and incident/$INCIDENT/exec-summary.md." \
+            --allow-tool='write, shell(npm run rag:*)' \
+            --no-ask-user \
+            -s \
+            --log-level=warning
+
+      - name: Check that both documents were written
+        run: |
+          for f in postmortem.md exec-summary.md; do
+            if [ ! -s "incident/$INCIDENT/$f" ]; then
+              echo "::error::incident/$INCIDENT/$f was not written by the agent"
+              exit 1
+            fi
+          done
+          if grep -qi "applicantName" "incident/$INCIDENT/postmortem.md" "incident/$INCIDENT/exec-summary.md"; then
+            echo "::error::the documents contain an applicantName field; personal data is not allowed (OPS-060, POL-070)"
+            exit 1
+          fi
+
+      - name: Publish to the job summary
+        run: |
+          {
+            echo "# Executive summary: $INCIDENT"
+            cat "incident/$INCIDENT/exec-summary.md"
+            echo
+            echo "---"
+            echo
+            cat "incident/$INCIDENT/postmortem.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the documents
+        uses: actions/upload-artifact@v4
+        with:
+          name: postmortem-${{ inputs.incident }}
+          path: |
+            incident/${{ inputs.incident }}/postmortem.md
+            incident/${{ inputs.incident }}/exec-summary.md
+          if-no-files-found: error
