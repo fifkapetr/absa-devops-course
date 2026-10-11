@@ -1,0 +1,56 @@
+{
+  "id": "INC-20261007-01",
+  "title": "Lost applications after redeploy: container ran with persistence disabled",
+  "severity": "S2",
+  "status": "resolved",
+  "branch": "CZ-PRG-01",
+  "system": "Tredgate Loan container pilot (gateway, loan-api, docs-search)",
+  "release": { "deployed": "1.2.0 (hardened container configuration, memory limit 512m)", "rollback_target": "not used; configuration fixed in place" },
+  "timezone": "Europe/Prague (CEST, UTC+02:00); container logs are in UTC",
+  "timestamps": {
+    "deployed": "2026-10-07T13:00:06+02:00",
+    "first_failure_in_logs": "2026-10-07T13:25:40+02:00",
+    "container_recreated": "2026-10-07T15:42:06+02:00",
+    "detected": "2026-10-07T15:50:00+02:00",
+    "declared": "2026-10-07T15:53:00+02:00",
+    "acknowledged": "2026-10-07T16:05:00+02:00",
+    "cause_identified": "2026-10-07T16:25:00+02:00",
+    "compliance_informed": "2026-10-07T16:35:00+02:00",
+    "mitigated": "2026-10-07T16:40:06+02:00",
+    "data_reentered": "2026-10-07T16:53:00+02:00",
+    "resolved": "2026-10-07T17:00:00+02:00",
+    "postmortem_due": "2026-10-14"
+  },
+  "roles": {
+    "operations_lead": "Eva Horakova",
+    "platform_engineer_on_call": "Jana Novakova",
+    "release_engineer": "Lukas Benes",
+    "developer": "Tomas Dvorak",
+    "platform_engineering_lead": "Martin Kral",
+    "compliance_officer": "Hana Vesela"
+  },
+  "impact": {
+    "data_loss": "3 applications created 13:10-15:35 (loanIds mv9c2k1lzq8r4ta, mv9dt0f7hrx3n2w, mv9g8w3bq1pm7ye) lost at the 15:42 restart; re-entered 16:43-16:47 with new ids (mv9kq4d2xz7n1rb, mv9kr7m8vt3c5la, mv9ksx1h9fq2w6e)",
+    "failed_decisions": "2 approvals returned 500 EACCES (13:25, 14:50); recorded 16:50 and 16:52 after the fix",
+    "customer_impact_window_local": "13:00-16:40 (data at risk), 15:42-16:53 (applications missing from the list)",
+    "personal_data": "none in logs; applications re-entered from paper notes (POL-070 informed)"
+  },
+  "work_notes": [
+    { "time": "2026-10-07T13:27:00+02:00", "author": "Operations Lead", "note": "Officer report: approval fails with EACCES on /data/audit.log; creating works. Not escalated." },
+    { "time": "2026-10-07T14:52:00+02:00", "author": "Operations Lead", "note": "Second approval failure with the same text." },
+    { "time": "2026-10-07T15:42:00+02:00", "author": "Release Engineer", "note": "mem_limit raised 512m -> 1g, loan-api recreated." },
+    { "time": "2026-10-07T15:50:00+02:00", "author": "Operations Lead", "note": "Total Applications tile 6 instead of 9; only seed records listed." },
+    { "time": "2026-10-07T15:58:00+02:00", "author": "Release Engineer", "note": "/data on host: loans.json dated Monday with 9 records, root-owned; audit.log absent; container user is node." },
+    { "time": "2026-10-07T16:11:00+02:00", "author": "Platform Engineer on-call", "note": "loan-api boot at 13:00 and at 15:42 both log level 40 'persistence disabled' reason 'EACCES /data/loans.json' (REF-030)." },
+    { "time": "2026-10-07T16:25:00+02:00", "author": "Platform Engineer on-call", "note": "Cause confirmed: non-root container user, root-owned bind mount. Data file intact; RB-003 restore not needed." },
+    { "time": "2026-10-07T16:30:00+02:00", "author": "Platform Engineering Lead", "note": "Fix approved: chown data folder, named volume, image prepares /data." },
+    { "time": "2026-10-07T16:40:06+02:00", "author": "Release Engineer", "note": "Container recreated with the fix; boot without 'persistence disabled'; 9 records listed." },
+    { "time": "2026-10-07T16:53:00+02:00", "author": "Operations Lead", "note": "3 applications re-entered, 2 approvals recorded (decision audited). Tile 12." },
+    { "time": "2026-10-07T17:00:00+02:00", "author": "Operations Lead", "note": "Resolved message sent. Postmortem due 2026-10-14, KI-006." }
+  ],
+  "related": {
+    "handbook": ["OPS-040", "OPS-050", "REF-030", "REF-040", "RB-003", "RB-006", "POL-070"],
+    "known_issue": "KI-006 (to be filed with the postmortem)",
+    "evidence": ["logs/combined.log", "logs/metrics.csv", "comms/teams-war-room.md", "comms/emails.md", "deploy/api.Dockerfile", "deploy/compose.yaml"]
+  }
+}

@@ -1,0 +1,9 @@
+.env
+.env.*
+.git
+node_modules
+logs
+data
+dist
+incident
+services

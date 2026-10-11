@@ -19,6 +19,7 @@
     "ops:load": "tsx ops/tools/load.ts",
     "ops:verify": "tsx ops/tools/verify.ts",
     "logs": "tsx ops/tools/logs.ts",
+    "incidents:generate": "tsx ops/tools/generate-incidents.ts",
     "rag": "tsx rag/cli.ts",
     "rag:index": "tsx rag/cli.ts --index",
     "rag:serve": "tsx rag/server.ts",

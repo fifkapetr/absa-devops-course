@@ -1,0 +1,49 @@
+# Tredgate Loan container pilot, hardened after INC-20261005-01.
+# Snapshot of the file deployed to CZ-PRG-01 on 2026-10-07 13:00 CEST (mem_limit raised to 512m
+# at the same time; raised again to 1g at 15:42, which recreated loan-api).
+services:
+  gateway:
+    image: nginx:1.27.2-alpine
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      loan-api:
+        condition: service_healthy
+      docs-search:
+        condition: service_healthy
+
+  loan-api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      DATA_FILE: /data/loans.json
+      AUDIT_FILE: /data/audit.log
+      METRICS_INTERVAL_MS: "60000"
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+
+  docs-search:
+    build:
+      context: .
+      dockerfile: docker/docs.Dockerfile
+    restart: unless-stopped
+    environment:
+      DOCS_ADMIN_TOKEN: ${DOCS_ADMIN_TOKEN}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s

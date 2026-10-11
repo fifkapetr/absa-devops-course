@@ -40,3 +40,7 @@ reports/
 
 # Bind-mounted data folder of the container pilot
 data/
+
+# Recorded incident evidence is committed although logs/ and *.log are ignored elsewhere
+!incident/**/logs/
+!incident/**/*.log

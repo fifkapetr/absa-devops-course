@@ -1,0 +1,59 @@
+{
+  "id": "INC-20261005-01",
+  "title": "Loan API restart loop after 1.2.0 pilot release (502 errors every ~8 minutes)",
+  "severity": "S2",
+  "status": "resolved",
+  "branch": "CZ-PRG-01",
+  "system": "Tredgate Loan container pilot (gateway, loan-api, docs-search)",
+  "release": { "deployed": "1.2.0", "rollback_target": "1.1.0" },
+  "timezone": "Europe/Prague (CEST, UTC+02:00); container logs are in UTC",
+  "timestamps": {
+    "deployed": "2026-10-05T08:30:06+02:00",
+    "first_failure_in_logs": "2026-10-05T09:12:56+02:00",
+    "detected": "2026-10-05T09:16:00+02:00",
+    "confirmed": "2026-10-05T09:17:00+02:00",
+    "declared": "2026-10-05T09:19:00+02:00",
+    "acknowledged": "2026-10-05T09:24:00+02:00",
+    "cause_identified": "2026-10-05T10:05:00+02:00",
+    "compliance_informed": "2026-10-05T10:10:00+02:00",
+    "rollback_decided": "2026-10-05T10:12:00+02:00",
+    "mitigated": "2026-10-05T10:20:06+02:00",
+    "resolved": "2026-10-05T11:30:00+02:00",
+    "postmortem_due": "2026-10-12"
+  },
+  "roles": {
+    "operations_lead": "Eva Horakova",
+    "platform_engineer_on_call": "Jana Novakova",
+    "release_engineer": "Lukas Benes",
+    "developer": "Tomas Dvorak",
+    "platform_engineering_lead": "Martin Kral",
+    "compliance_officer": "Hana Vesela"
+  },
+  "impact": {
+    "customer_impact_window_local": "09:12-10:20",
+    "symptom": "Gateway returns 502 for about 30 seconds after each loan-api restart; installment preview, list and decisions fail during that window",
+    "data_loss": "none (Total Applications tile 12 after rollback, equals shift log plus 3 paper applications)",
+    "personal_data": "applicant names written to the loan-api log by 1.2.0 (installment cache miss lines); count of distinct applicants to be taken from the log",
+    "numbers_from_logs": "restart count, failed/total requests and distinct applicant names are to be derived from logs/combined.log by the postmortem author"
+  },
+  "work_notes": [
+    { "time": "2026-10-05T09:24:00+02:00", "author": "Platform Engineer on-call", "note": "Acknowledged. Uptime 241 s at 09:17 implies a restart at 09:13. Exporting docker compose logs and docker events." },
+    { "time": "2026-10-05T09:28:00+02:00", "author": "Platform Engineer on-call", "note": "Gateway error log shows 'upstream timed out' for POST /docs/reindex (docs-search). Developer suspects VLAN change." },
+    { "time": "2026-10-05T09:36:00+02:00", "author": "Developer", "note": "Hypothesis: corrupted data file (KI-001)." },
+    { "time": "2026-10-05T09:43:00+02:00", "author": "Platform Engineer on-call", "note": "Data file parses, GET /api/loans returns 9 records, no level 50 lines. Data-file hypothesis dropped." },
+    { "time": "2026-10-05T09:47:00+02:00", "author": "Platform Engineer on-call", "note": "Upstream timeouts also present before the release (08:05, 08:50): handbook reindex cron vs 5 s gateway timeout. Not related." },
+    { "time": "2026-10-05T09:52:00+02:00", "author": "Platform Engineer on-call", "note": "docker events: container oom, die exitCode=137 for loan-api (mem_limit 256m). Started lines at 09:13, 09:22, 09:30, 09:38, 09:46: 5 restarts so far, about every 8 minutes. Watchdog cron restarts the container." },
+    { "time": "2026-10-05T10:05:00+02:00", "author": "Platform Engineer on-call", "note": "process metrics: heapUsedMB and cacheEntries grow linearly after each start (about 65 MB / 1300 entries before the kill). Cause: 1.2.0 installment cache without eviction. 'installment cache miss' lines contain applicantName." },
+    { "time": "2026-10-05T10:10:00+02:00", "author": "Platform Engineer on-call", "note": "Compliance Officer informed by e-mail (POL-070)." },
+    { "time": "2026-10-05T10:12:00+02:00", "author": "Platform Engineering Lead", "note": "Rollback to 1.1.0 approved." },
+    { "time": "2026-10-05T10:20:06+02:00", "author": "Release Engineer", "note": "loan-api recreated from the 1.1.0 image. Health ok, no version field." },
+    { "time": "2026-10-05T10:21:00+02:00", "author": "Operations Lead", "note": "Update #1 sent on the branch channel." },
+    { "time": "2026-10-05T11:30:00+02:00", "author": "Operations Lead", "note": "Resolved after 68 minutes of monitoring without errors. Resolved message sent." },
+    { "time": "2026-10-05T11:45:00+02:00", "author": "Platform Engineering Lead", "note": "Postmortem requested by 2026-10-12 (OPS-040). Known Issue entry KI-005 to be filed." }
+  ],
+  "related": {
+    "handbook": ["OPS-040", "OPS-050", "OPS-060", "POL-070", "RB-002", "RB-003"],
+    "known_issue": "KI-005 (to be filed with the postmortem)",
+    "evidence": ["logs/combined.log", "logs/metrics.csv", "comms/teams-war-room.md", "comms/emails.md"]
+  }
+}
