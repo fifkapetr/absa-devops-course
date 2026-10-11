@@ -74,5 +74,5 @@ This glossary defines the business and technical terms used across the Tredgate 
 | SLA | Service level agreement: a pending application is decided within 2 business days (Monday to Friday, excluding Tredgate holidays) of `createdAt`; auto-decide is immediate (OPS-020). |
 | Standard risk envelope | The auto-decide limits of POL-040: amount at most 100,000 USD and term at most 60 months, both inclusive. |
 | Tredgate Core Banking | The system outside Tredgate Loan that disburses approved loans and manages repayments and arrears (POL-060). |
-| Tredgate Loan | The single-instance system (Vue UI, Express API, JSON data file, JSON lines log) recording SPL applications and decisions at a branch. Current version 1.1.0. |
+| Tredgate Loan | The single-instance system (Vue UI, Express API, JSON data file, JSON lines log) recording SPL applications and decisions at a branch. Current version 1.2.0; branch CZ-PRG-01 runs it as the container pilot (REF-040). |
 | Vite | UI development server and build tool: `npm run dev` serves the UI on port 5173 and proxies `/api` to port 3000; `npm run build` produces the files `npm start` serves. |

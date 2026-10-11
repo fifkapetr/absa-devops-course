@@ -1,14 +1,27 @@
 import { existsSync } from 'node:fs'
 import { createApp } from './app'
+import { createAuditLog } from './auditLog'
 import { config } from './config'
+import { cacheSize } from './installmentCache'
 import { createLogger } from './logger'
 import { createLoanStore } from './loanStore'
+import { createMemoryLoanStore } from './memoryStore'
+import { startProcessMetrics } from './metrics'
+import { checkWritable } from './persistence'
 
 const logger = createLogger(config.logFile, config.logLevel)
-const store = createLoanStore({ filePath: config.dataFile, seedPath: config.seedFile })
 const staticDir = existsSync(config.staticDir) ? config.staticDir : undefined
 
-const app = createApp({ store, logger, staticDir })
+// Since 1.2.0: when the data file cannot be written, keep serving from memory (seed data) instead of failing
+const unwritable = await checkWritable(config.dataFile)
+const store = unwritable
+  ? await createMemoryLoanStore(config.seedFile)
+  : createLoanStore({ filePath: config.dataFile, seedPath: config.seedFile })
+if (unwritable) {
+  logger.warn({ reason: unwritable }, 'persistence disabled')
+}
+
+const app = createApp({ store, logger, audit: createAuditLog(config.auditFile), version: config.version, staticDir })
 
 // Make sure the data file exists before the first request (it is created from the seed when missing)
 await store.read()
@@ -21,6 +34,7 @@ app.listen(config.port, (err?: Error) => {
   }
   logger.info(
     {
+      version: config.version,
       port: config.port,
       dataFile: config.dataFile,
       logFile: config.logFile,
@@ -28,4 +42,5 @@ app.listen(config.port, (err?: Error) => {
     },
     'Tredgate Loan API started'
   )
+  startProcessMetrics(logger, config.metricsIntervalMs, cacheSize)
 })

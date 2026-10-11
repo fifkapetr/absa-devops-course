@@ -1,14 +1,16 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pino } from 'pino'
-import { createApp } from '../server/app'
+import { createApp as createLoanApp } from '../server/app'
+import { createAuditLog } from '../server/auditLog'
 import { createLoanStore } from '../server/loanStore'
-import type { LoanApplication } from '../shared/loan'
+import { createMemoryLoanStore } from '../server/memoryStore'
+import type { InstallmentResult, LoanApplication } from '../shared/loan'
 
 const SEED_FILE = path.resolve('server/data/loans.seed.json')
 
@@ -17,6 +19,7 @@ type ErrorBody = { error: string }
 let server: Server
 let baseUrl: string
 let dataDir: string
+let auditFile: string
 
 async function api<T>(route: string, init?: RequestInit): Promise<{ status: number; body: T }> {
   const response = await fetch(`${baseUrl}/api${route}`, {
@@ -24,6 +27,14 @@ async function api<T>(route: string, init?: RequestInit): Promise<{ status: numb
     ...init
   })
   return { status: response.status, body: (await response.json()) as T }
+}
+
+async function startServer(app: ReturnType<typeof createLoanApp>) {
+  await new Promise<void>(resolve => {
+    server = app.listen(0, () => resolve())
+  })
+  const { port } = server.address() as AddressInfo
+  baseUrl = `http://127.0.0.1:${port}`
 }
 
 const newLoan = {
@@ -37,14 +48,9 @@ describe('loan API', () => {
   beforeEach(async () => {
     // Every test gets a fresh copy of the seed data in a temp folder
     dataDir = await mkdtemp(path.join(tmpdir(), 'tredgate-loan-'))
+    auditFile = path.join(dataDir, 'audit.log')
     const store = createLoanStore({ filePath: path.join(dataDir, 'loans.json'), seedPath: SEED_FILE })
-    const app = createApp({ store, logger: pino({ level: 'silent' }) })
-
-    await new Promise<void>(resolve => {
-      server = app.listen(0, () => resolve())
-    })
-    const { port } = server.address() as AddressInfo
-    baseUrl = `http://127.0.0.1:${port}`
+    await startServer(createLoanApp({ store, logger: pino({ level: 'silent' }), audit: createAuditLog(auditFile), version: '1.2.0' }))
   })
 
   afterEach(async () => {
@@ -54,10 +60,12 @@ describe('loan API', () => {
     await rm(dataDir, { recursive: true, force: true })
   })
 
-  it('reports health', async () => {
-    const { status, body } = await api<{ status: string }>('/health')
+  it('reports health with the release version', async () => {
+    const { status, body } = await api<{ status: string; version: string; uptimeSeconds: number }>('/health')
     expect(status).toBe(200)
     expect(body.status).toBe('ok')
+    expect(body.version).toBe('1.2.0')
+    expect(typeof body.uptimeSeconds).toBe('number')
   })
 
   it('lists the seeded loans', async () => {
@@ -164,6 +172,70 @@ describe('loan API', () => {
     })
     const { body } = await api<LoanApplication>(`/loans/${created.body.id}/auto-decide`, { method: 'POST' })
     expect(body.status).toBe('rejected')
+  })
+
+  it('calculates installments with a full schedule', async () => {
+    const { status, body } = await api<InstallmentResult>('/installments/calculate', {
+      method: 'POST',
+      body: JSON.stringify({ ...newLoan, requestedAt: '2026-10-05T06:30:00.000Z' })
+    })
+    expect(status).toBe(200)
+    expect(body.monthlyPayment).toBe(2187.5)
+    expect(body.schedule).toHaveLength(12)
+    expect(body.schedule[0]?.dueDate).toBe('2026-11-05')
+    expect(body.schedule.at(-1)?.balance).toBe(0)
+  })
+
+  it('rejects an invalid installment request with 400', async () => {
+    const { status, body } = await api<ErrorBody>('/installments/calculate', {
+      method: 'POST',
+      body: JSON.stringify({ ...newLoan, interestRate: 8 })
+    })
+    expect(status).toBe(400)
+    expect(body.error).toContain('Interest rate must be between 0 and 1')
+  })
+
+  it('writes one audit line per decision', async () => {
+    await api('/loans/ln-1003/status', { method: 'PATCH', body: JSON.stringify({ status: 'rejected' }) })
+    await api('/loans/ln-1004/auto-decide', { method: 'POST' })
+    const lines = (await readFile(auditFile, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toMatchObject({ loanId: 'ln-1003', decision: 'rejected' })
+    expect(lines[1]).toMatchObject({ loanId: 'ln-1004', decision: 'approved' })
+    expect(lines[0].time).toBeDefined()
+    expect(lines[0].reqId).toMatch(/^[0-9a-f]{8}$/)
+  })
+
+  it('does not save a decision when the audit trail cannot be written', async () => {
+    // Point the audit file inside a path that is a file, so the append fails like a read-only folder would
+    await server.close()
+    const blocker = path.join(dataDir, 'blocked')
+    await writeFile(blocker, 'not a folder')
+    const store = createLoanStore({ filePath: path.join(dataDir, 'loans.json'), seedPath: SEED_FILE })
+    const brokenAudit = createAuditLog(path.join(blocker, 'audit.log'))
+    await startServer(createLoanApp({ store, logger: pino({ level: 'silent' }), audit: brokenAudit }))
+
+    const { status, body } = await api<ErrorBody>('/loans/ln-1003/status', {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'approved' })
+    })
+    expect(status).toBe(500)
+    expect(body.error).toContain(`open '${path.join(blocker, 'audit.log')}'`)
+
+    const list = await api<LoanApplication[]>('/loans')
+    expect(list.body.find(loan => loan.id === 'ln-1003')?.status).toBe('pending')
+  })
+
+  it('keeps working from memory when persistence is disabled', async () => {
+    await server.close()
+    const store = await createMemoryLoanStore(SEED_FILE)
+    await startServer(createLoanApp({ store, logger: pino({ level: 'silent' }) }))
+
+    const created = await api<LoanApplication>('/loans', { method: 'POST', body: JSON.stringify(newLoan) })
+    expect(created.status).toBe(201)
+    const list = await api<LoanApplication[]>('/loans')
+    expect(list.body).toHaveLength(7)
+    expect(list.body.some(loan => loan.id === created.body.id)).toBe(true)
   })
 
   it('returns 404 JSON for unknown API routes', async () => {

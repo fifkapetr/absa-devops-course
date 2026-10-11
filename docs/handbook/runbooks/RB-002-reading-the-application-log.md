@@ -3,7 +3,7 @@ id: RB-002
 title: Reading the Application Log
 section: Runbooks
 tags: [logging, app-log, json-lines, reqId, pino, grep, jq, stack-trace, troubleshooting]
-updated: 2026-09-27
+updated: 2026-10-02
 ---
 
 # RB-002 Reading the Application Log
@@ -37,18 +37,21 @@ The log is written twice, to the terminal (stdout) and to `logs/app.log` (or the
 
 1. Read one line. Base fields are `level`, `time`, `pid`, `hostname`, `msg` and, for anything tied to a request, `reqId` (8 hexadecimal characters). Levels: `30` info, `40` warn (expected rejections, 4xx), `50` error (unexpected failures, 500). No message is emitted at level 20 (debug), so `LOG_LEVEL=debug` behaves like `info`.
 
-2. Know the eight message types.
+2. Know the eleven message types (three were added in 1.2.0).
 
    | msg | Level | Extra fields | Emitted when |
    |---|---|---|---|
-   | `Tredgate Loan API started` | 30 | port, dataFile, logFile, servingFrontend | process is listening |
+   | `Tredgate Loan API started` | 30 | version, port, dataFile, logFile, servingFrontend | process is listening |
    | `Tredgate Loan API failed to start` | 50 | err (code, message, stack), port | the port could not be opened, usually `EADDRINUSE` (RB-004); the process exits with code 1 |
    | `request completed` | 30 | method, url, status, durationMs | every request, once, when the response is finished |
    | `loan created` | 30 | loanId, amount, termMonths | `POST /api/loans` returned 201 |
    | `loan status updated` | 30 | loanId, status | `PATCH /api/loans/:id/status` succeeded |
    | `loan auto-decided` | 30 | loanId, status | `POST /api/loans/:id/auto-decide` succeeded |
    | `request rejected` | 40 | status, reason | any 400, 404 or 409 (RB-008) |
-   | `request failed with an unexpected error` | 50 | err (type, message, stack) | any 500 (RB-007) |
+   | `request failed with an unexpected error` | 50 | err (type, message, stack) | any 500 (RB-007), including a decision whose audit line could not be written (1.2.0) |
+   | `decision audited` | 30 | loanId, decision | 1.2.0: the decision was appended to `AUDIT_FILE` and saved |
+   | `persistence disabled` | 40 | reason | 1.2.0: once at start, the data file is not writable; data lives in memory until restart (RB-003) |
+   | `process metrics` | 30 | heapUsedMB, rssMB, cacheEntries, uptimeSeconds | 1.2.0: every `METRICS_INTERVAL_MS`, no reqId |
 
    ```json
    {"level":30,"time":"2026-09-27T18:30:35.822Z","pid":10791,"hostname":"branch-ws-07","reqId":"ea7a9d44","loanId":"muk5m5v2e3z5zkt","amount":5000,"termMonths":12,"msg":"loan created"}

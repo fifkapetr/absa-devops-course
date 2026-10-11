@@ -1,7 +1,7 @@
 {
   "name": "tredgate-loan",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "concurrently -c cyan,green,magenta npm:dev:web npm:dev:api npm:dev:rag",
@@ -46,6 +46,6 @@
     "vue-tsc": "^3.1.4"
   },
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22.19"
   }
 }

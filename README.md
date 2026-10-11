@@ -106,6 +106,7 @@ All endpoints are under `/api` and use JSON.
 | POST   | `/api/loans`                 | Create a loan application                                                  | 201, 400 on validation error          |
 | PATCH  | `/api/loans/:id/status`      | Approve or reject a pending loan: `{ "status": "approved" \| "rejected" }` | 200, 400, 404, 409 if already decided |
 | POST   | `/api/loans/:id/auto-decide` | Apply the lending policy rules to a pending loan                           | 200, 404, 409 if already decided      |
+| POST   | `/api/installments/calculate` | Monthly installment and amortization schedule for the form values (1.2.0) | 200, 400 on validation error          |
 
 Errors are returned as `{ "error": "message" }`. Unexpected errors return 500 with a generic message and the full stack trace goes to the log.
 
@@ -139,6 +140,8 @@ Levels: 30 = info, 40 = warn (expected rejections such as 400/404), 50 = error (
 | `DATA_FILE` | `server/data/loans.json` | Location of the data file                         |
 | `LOG_FILE`  | `logs/app.log`           | Location of the log file                          |
 | `LOG_LEVEL` | `info`                   | pino log level (`debug`, `info`, `warn`, `error`) |
+| `AUDIT_FILE` | `server/data/audit.log` | Decision audit trail, one JSON line per decision (1.2.0) |
+| `METRICS_INTERVAL_MS` | `60000`       | Interval of the `process metrics` log line (1.2.0) |
 | `RAG_PORT`  | `3001`                   | Documentation search API port                     |
 
 ## Documentation
@@ -217,6 +220,11 @@ server/
 ├── config.ts            # Ports and paths (env overrides)
 ├── loanService.ts       # Loan use cases on top of the store
 ├── loanStore.ts         # JSON-file persistence
+├── memoryStore.ts       # In-memory fallback when the data file is not writable (1.2.0)
+├── auditLog.ts          # Decision audit trail (1.2.0)
+├── installmentCache.ts  # Cache for the installment calculator (1.2.0)
+├── metrics.ts           # `process metrics` log line (1.2.0)
+├── persistence.ts       # Start-up check: is the data file writable? (1.2.0)
 ├── logger.ts            # pino logger and per-request logging
 ├── errors.ts            # HttpError, 404 and error handler
 ├── reset.ts             # `npm run data:reset`

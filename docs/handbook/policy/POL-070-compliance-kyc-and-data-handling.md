@@ -84,6 +84,9 @@ The application log contains no personal data by design, so it can be read, copi
 | `loan auto-decided` | info | `loanId`, `status` | None |
 | `request rejected` | warn | `status`, `reason` | None; the reason is one of the fixed validation or error messages, which quote identifiers but never names |
 | `request failed with an unexpected error` | error | `err` with stack trace | None in normal operation |
+| `decision audited` (1.2.0) | info | `loanId`, `decision` | None |
+| `persistence disabled` (1.2.0) | warn | `reason` (error code and data file path) | None |
+| `process metrics` (1.2.0) | info | `heapUsedMB`, `rssMB`, `cacheEntries`, `uptimeSeconds` | None |
 
 Every line also carries `level`, `time`, `pid`, `hostname`, and a per-request `reqId` of 8 hexadecimal characters. A typical creation line reads:
 

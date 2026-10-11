@@ -3,7 +3,7 @@ id: OPS-040
 title: Incident Management
 section: Operations
 tags: [incident, severity, on-call, triage, postmortem, known-issues, communication]
-updated: 2026-09-27
+updated: 2026-10-02
 ---
 
 # OPS-040 Incident Management
@@ -16,7 +16,7 @@ An **incident** is any unplanned event that prevents or degrades the recording o
 
 Three teams take part: Lending Operations (the Operations Lead) detects, declares, and communicates; Platform Engineering provides the on-call engineer who fixes S1 and S2 and advises on S3 and S4; Compliance is informed whenever applicant data may have been exposed, lost, or altered, and receives every postmortem.
 
-Because Tredgate Loan is a single-instance system on one workstation with no database, most incidents come down to three things: the process is not running, the data file `server/data/loans.json` is unreadable, or requests are producing `4xx` or `500` responses.
+Because Tredgate Loan is a single-instance system on one workstation with no database, most incidents come down to three things: the process is not running, the data file `server/data/loans.json` is unreadable, or requests are producing `4xx` or `500` responses. Since release 1.2.0 branch CZ-PRG-01 additionally runs the container deployment pilot (REF-040): the same single instance, packaged as containers behind a gateway. Incidents there are declared and handled by this document unchanged; the evidence comes from `docker compose logs` instead of `logs/app.log`, and a restarting container shows as repeated `Tredgate Loan API started` lines.
 
 ## Severity levels, response and update times
 

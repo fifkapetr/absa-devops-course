@@ -1,5 +1,6 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express'
 import { LoanValidationError } from '../shared/loanRules'
+import { AuditWriteError } from './auditLog'
 
 /**
  * An error with an HTTP status code, thrown by routes and services
@@ -31,7 +32,8 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
 
   if (status >= 500) {
     req.log.error({ err }, 'request failed with an unexpected error')
-    res.status(status).json({ error: 'Internal server error' })
+    // Since 1.2.0 a failed audit write reports the file system error so the operator sees the path
+    res.status(status).json({ error: err instanceof AuditWriteError ? message : 'Internal server error' })
     return
   }
 

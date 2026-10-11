@@ -3,7 +3,7 @@ id: OPS-060
 title: Logging and Monitoring Standards
 section: Operations
 tags: [logging, pino, json-lines, reqId, log-levels, retention, health-check, personal-data]
-updated: 2026-09-27
+updated: 2026-10-02
 ---
 
 # OPS-060 Logging and Monitoring Standards
@@ -25,51 +25,57 @@ Every log line is one JSON object on one line (JSON lines), appended in the orde
 | `pid` | number | every line | Process id of the server; changes at every restart |
 | `hostname` | string | every line | Name of the branch workstation, for example `branch-ws-07` |
 | `reqId` | string | every request-scoped line | 8 hexadecimal characters identifying one HTTP request |
-| `msg` | string | every line | One of the eight fixed message texts in the message catalog of this document |
-| event fields | varies | depends on `msg` | `port`, `dataFile`, `logFile`, `servingFrontend`, `method`, `url`, `status`, `durationMs`, `loanId`, `amount`, `termMonths`, `reason`, `err` |
+| `msg` | string | every line | One of the eleven fixed message texts in the message catalog of this document |
+| event fields | varies | depends on `msg` | `version`, `port`, `dataFile`, `logFile`, `servingFrontend`, `method`, `url`, `status`, `durationMs`, `loanId`, `amount`, `termMonths`, `decision`, `reason`, `err`, `heapUsedMB`, `rssMB`, `cacheEntries`, `uptimeSeconds` |
 
-The start-up lines `Tredgate Loan API started` and `Tredgate Loan API failed to start` are the only lines without a `reqId`; every other line belongs to exactly one request. The `err` field on error lines is an object with `type` (for example `SyntaxError`), `message`, and `stack`. It is the only place a stack trace ever appears, because the HTTP response for a 500 is always the fixed text `{"error":"Internal server error"}`.
+The process-level lines `Tredgate Loan API started`, `Tredgate Loan API failed to start`, `persistence disabled` and `process metrics` are the only lines without a `reqId`; every other line belongs to exactly one request. The `err` field on error lines is an object with `type` (for example `SyntaxError`), `message`, and `stack`. It is the only place a stack trace ever appears, because the HTTP response for a 500 is the fixed text `{"error":"Internal server error"}`, with one exception since 1.2.0: a decision whose audit line could not be written returns the file system error message (REF-010).
 
 ## Log levels and LOG_LEVEL
 
 | `level` | Name | Written for | Expected volume |
 |---|---|---|---|
-| 30 | info | Start-up, every completed request, every domain event (created, status updated, auto-decided) | Dozens to hundreds per day |
-| 40 | warn | Every request answered with a 4xx: validation failure or malformed JSON (400), unknown application or route (404), decision on an already decided application (409) | A handful per day, each with a `reason` |
+| 30 | info | Start-up, every completed request, every domain event (created, status updated, auto-decided, decision audited), the periodic `process metrics` line | Dozens to hundreds per day, plus one metrics line per `METRICS_INTERVAL_MS` |
+| 40 | warn | Every request answered with a 4xx: validation failure or malformed JSON (400), unknown application or route (404), decision on an already decided application (409); the start-up warning `persistence disabled` | A handful per day, each with a `reason` |
 | 50 | error | Every request answered with a 500, such as an unreadable data file | Zero on a normal day |
 
 A 4xx is an expected outcome and never carries a stack trace; a 500 is a defect or environment problem and always carries `err` with a stack (RB-007).
 
-The environment variable `LOG_LEVEL` sets the minimum level written; the default `info` writes 30 and above. `LOG_LEVEL=warn` would drop the `request completed` and domain event lines and make SLA measurement (OPS-020) and correlation impossible, so it is not permitted on a branch workstation. `LOG_LEVEL=debug` is accepted but version 1.1 writes no debug events. A non-default value is recorded in the shift log (REF-030).
+The environment variable `LOG_LEVEL` sets the minimum level written; the default `info` writes 30 and above. `LOG_LEVEL=warn` would drop the `request completed` and domain event lines and make SLA measurement (OPS-020) and correlation impossible, so it is not permitted on a branch workstation. `LOG_LEVEL=debug` is accepted but version 1.2 writes no debug events. A non-default value is recorded in the shift log (REF-030).
 
 ## Message catalog with sample lines
 
-Tredgate Loan writes exactly eight message texts. Any other `msg` value means an unreleased change and is reported to Platform Engineering.
+Tredgate Loan writes exactly eleven message texts (eight in 1.1.0, three added in 1.2.0). Any other `msg` value means an unreleased change and is reported to Platform Engineering.
 
 | `msg` | Level | Event fields | When |
 |---|---|---|---|
-| `Tredgate Loan API started` | 30 | `port`, `dataFile`, `logFile`, `servingFrontend` | Once per process start |
+| `Tredgate Loan API started` | 30 | `version`, `port`, `dataFile`, `logFile`, `servingFrontend` | Once per process start |
 | `Tredgate Loan API failed to start` | 50 | `err`, `port` | Once, when the process cannot open its port (the `err.code` is `EADDRINUSE` when another instance holds it); the process then exits with code 1 (RB-004) |
 | `request completed` | 30 | `method`, `url`, `status`, `durationMs` | Once per request, after the response, whatever the status |
 | `loan created` | 30 | `loanId`, `amount`, `termMonths` | Successful `POST /api/loans` |
 | `loan status updated` | 30 | `loanId`, `status` | Successful manual decision via `PATCH /api/loans/:id/status` |
 | `loan auto-decided` | 30 | `loanId`, `status` | Successful `POST /api/loans/:id/auto-decide`; `status` is the outcome |
 | `request rejected` | 40 | `status`, `reason` | Any 4xx; `reason` is the text also returned in the JSON `error` field |
-| `request failed with an unexpected error` | 50 | `err` | Any 500 |
+| `request failed with an unexpected error` | 50 | `err` | Any 500, including a decision whose audit line could not be written (1.2.0) |
+| `decision audited` | 30 | `loanId`, `decision` | Since 1.2.0: after a manual or automated decision was appended to the audit trail (`AUDIT_FILE`, REF-030) and saved |
+| `persistence disabled` | 40 | `reason` | Since 1.2.0: once at start when `DATA_FILE` is not writable (`reason` is `EACCES <path>`); the process continues from memory and every restart loses the applications created since (RB-003) |
+| `process metrics` | 30 | `heapUsedMB`, `rssMB`, `cacheEntries`, `uptimeSeconds` | Since 1.2.0: every `METRICS_INTERVAL_MS` (default 60 s); the only periodic line |
 
 Sample lines, one per message:
 
 ```
-{"level":30,"time":"2026-09-28T07:02:11.410Z","pid":10791,"hostname":"branch-ws-07","port":3000,"dataFile":"/opt/tredgate-loan/server/data/loans.json","logFile":"/opt/tredgate-loan/logs/app.log","servingFrontend":true,"msg":"Tredgate Loan API started"}
+{"level":30,"time":"2026-09-28T07:02:11.410Z","pid":10791,"hostname":"branch-ws-07","version":"1.2.0","port":3000,"dataFile":"/opt/tredgate-loan/server/data/loans.json","logFile":"/opt/tredgate-loan/logs/app.log","servingFrontend":true,"msg":"Tredgate Loan API started"}
 {"level":30,"time":"2026-09-28T07:02:40.118Z","pid":10791,"hostname":"branch-ws-07","reqId":"3f9c1a72","method":"GET","url":"/api/health","status":200,"durationMs":1,"msg":"request completed"}
 {"level":30,"time":"2026-09-27T18:30:35.822Z","pid":10791,"hostname":"branch-ws-07","reqId":"ea7a9d44","loanId":"muk5m5v2e3z5zkt","amount":5000,"termMonths":12,"msg":"loan created"}
 {"level":30,"time":"2026-09-28T14:05:12.331Z","pid":10791,"hostname":"branch-ws-07","reqId":"7b1e90c2","loanId":"ln-1006","status":"approved","msg":"loan status updated"}
 {"level":30,"time":"2026-09-28T14:07:03.902Z","pid":10791,"hostname":"branch-ws-07","reqId":"c05d21e8","loanId":"ln-1004","status":"approved","msg":"loan auto-decided"}
 {"level":40,"time":"2026-09-28T09:12:48.006Z","pid":10791,"hostname":"branch-ws-07","reqId":"18e15ee8","status":400,"reason":"Interest rate must be between 0 and 1 (e.g. 0.08 for 8%)","msg":"request rejected"}
 {"level":50,"time":"2026-09-28T08:58:20.447Z","pid":10791,"hostname":"branch-ws-07","reqId":"c41d02aa","err":{"type":"SyntaxError","message":"Unexpected end of JSON input","stack":"SyntaxError: Unexpected end of JSON input\n    at JSON.parse (<anonymous>)\n    at read (/opt/tredgate-loan/server/loanStore.ts:29:17)"},"msg":"request failed with an unexpected error"}
+{"level":30,"time":"2026-10-02T14:05:12.332Z","pid":10791,"hostname":"branch-ws-07","reqId":"7b1e90c2","loanId":"ln-1006","decision":"approved","msg":"decision audited"}
+{"level":40,"time":"2026-10-02T07:02:11.102Z","pid":10791,"hostname":"branch-ws-07","reason":"EACCES /data/loans.json","msg":"persistence disabled"}
+{"level":30,"time":"2026-10-02T07:03:11.410Z","pid":10791,"hostname":"branch-ws-07","heapUsedMB":24,"rssMB":96,"cacheEntries":12,"uptimeSeconds":60,"msg":"process metrics"}
 ```
 
-The `loan created` line carries `amount` and `termMonths` but deliberately not `applicantName` or `interestRate`; the record is identified by `loanId`.
+The `loan created` line carries `amount` and `termMonths` but deliberately not `applicantName` or `interestRate`; the record is identified by `loanId`. The `process metrics` line is the only periodic line: `heapUsedMB` is the JavaScript heap in use, `rssMB` the resident memory of the process, `cacheEntries` the number of results held by the installment calculator cache (REF-010). A `heapUsedMB` that grows from one line to the next without ever falling back is a memory problem and is reported to Platform Engineering.
 
 ## Correlating lines with reqId
 
@@ -122,11 +128,12 @@ The Operations Lead reviews the log at start and end of day (OPS-030) with three
 | Errors | `grep -c '"level":50' logs/app.log` | `0` | Investigate each level 50 line by `reqId` (RB-007); match it to an incident log entry or create one (OPS-040) |
 | Warnings | `grep '"level":40' logs/app.log \| tail -n 20` | Routine `reason` values from RB-008, occasional 404 or 409 | A `reason` repeating many times indicates an input source problem (KI-003); report to Platform Engineering |
 | Restarts | `grep -c '"msg":"Tredgate Loan API started"' logs/app.log` | `1` per day | More than one means the process restarted; each restart needs an explanation in the shift log |
+| Persistence | `grep -c '"msg":"persistence disabled"' logs/app.log` | `0` | Any other value means the data file was not writable at start and applications are held in memory only: stop, fix the folder permissions, restart (RB-003); applications created since the line are lost at the next restart |
 
 Health checks are deliberately simple and deliberately limited:
 
-- `GET /api/health` returns `{"status":"ok","uptimeSeconds":<n>}`, where `uptimeSeconds` is the whole number of seconds since the process started. It proves the process is up and accepting HTTP. It does **not** read the data file, so it stays `ok` while every real request fails with 500 because `server/data/loans.json` is corrupted (RB-003).
+- `GET /api/health` returns `{"status":"ok","version":"1.2.0","uptimeSeconds":<n>}`, where `uptimeSeconds` is the whole number of seconds since the process started and `version` is the installed release. It proves the process is up and accepting HTTP. It does **not** read the data file, so it stays `ok` while every real request fails with 500 because `server/data/loans.json` is corrupted (RB-003).
 - `GET /api/loans` is the deep check: it reads and parses the data file. A `200` with an array proves the data path works; a `500` with a level 50 line identifies the problem. The UI performs this check on every load, so the red banner "Failed to load loan applications" is the earliest indicator of a data file problem (RB-005).
 - The summary tiles are recorded at start of day, midday, and end of day; a Total Applications value lower than the previous reading is data loss and an incident.
 
-There is no automated alerting in version 1.1; a failure between readings is noticed by a Loan Officer seeing an error in the UI, who reports the time and message immediately (OPS-030).
+There is no automated alerting in version 1.2; a failure between readings is noticed by a Loan Officer seeing an error in the UI, who reports the time and message immediately (OPS-030).

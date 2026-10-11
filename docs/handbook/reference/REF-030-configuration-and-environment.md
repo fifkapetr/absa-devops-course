@@ -3,14 +3,14 @@ id: REF-030
 title: Configuration and Environment
 section: Reference
 tags: [configuration, environment-variables, ports, npm-scripts, node, vite-proxy, files]
-updated: 2026-09-27
+updated: 2026-10-02
 ---
 
 # REF-030 Configuration and Environment
 
 ## Environment variables
 
-Tredgate Loan is configured entirely through four optional environment variables, read once at start by `server/config.ts`. There is no configuration file and no `.env` loader: the variables must be set in the shell, the service definition or the shortcut that starts the process. Changing a value requires a restart (RB-001).
+Tredgate Loan is configured entirely through six optional environment variables, read once at start by `server/config.ts`. There is no configuration file and no `.env` loader: the variables must be set in the shell, the service definition or the shortcut that starts the process. Changing a value requires a restart (RB-001).
 
 | Variable | Default | Effect | Example |
 |---|---|---|---|
@@ -18,18 +18,21 @@ Tredgate Loan is configured entirely through four optional environment variables
 | `DATA_FILE` | `<install>/server/data/loans.json` | Path of the JSON data file (REF-020). Absolute, or relative to the folder the command is run from. The folder is created when the seed is copied. | `DATA_FILE=/srv/tredgate/branch-07/loans.json` |
 | `LOG_FILE` | `<install>/logs/app.log` | Path of the log file. The folder is created on demand; lines are appended. The same lines always go to the console as well. | `LOG_FILE=/var/log/tredgate/app.log` |
 | `LOG_LEVEL` | `info` | Minimum pino level written: `debug`, `info`, `warn` or `error`. | `LOG_LEVEL=warn` |
+| `AUDIT_FILE` | `<install>/server/data/audit.log` | Since 1.2.0. Path of the decision audit trail: one JSON line per approve, reject or auto-decide, appended **before** the decision is saved. If the line cannot be written, the decision fails with 500 (REF-010). | `AUDIT_FILE=/data/audit.log` |
+| `METRICS_INTERVAL_MS` | `60000` | Since 1.2.0. How often the `process metrics` log line is written (OPS-060). | `METRICS_INTERVAL_MS=5000` |
 
 Notes on behavior that is easy to get wrong:
 
 - `PORT` does **not** change the Vite development proxy, which is fixed to `http://localhost:3000` in `vite.config.ts`. Setting `PORT` in development breaks the UI unless that file is edited too. In single-process mode `PORT` applies to everything.
 - The seed path is not configurable: it is always `server/data/loans.seed.json` in the installation folder.
 - At `LOG_LEVEL=warn` the startup line `Tredgate Loan API started`, every `request completed` line and every domain event (`loan created`, `loan status updated`, `loan auto-decided`) are suppressed; only `request rejected` (4xx) and `request failed with an unexpected error` (5xx) remain. `error` keeps only the latter. This makes RB-002 correlation by `reqId` impossible, so `info` is the standard for branch workstations (OPS-060).
-- `debug` currently produces the same output as `info`; release 1.1 has no debug-level statements.
+- `debug` currently produces the same output as `info`; release 1.2 has no debug-level statements.
+- Since 1.2.0 the process checks at start that `DATA_FILE` is writable. If it is not (for example a read-only folder), it writes **one** level 40 line `persistence disabled` with `reason` `EACCES <path>` and continues with an in-memory store initialised from the seed: reads and creates work, but nothing survives a restart. The audit trail is checked separately, on every decision.
 
-The effective values are echoed in the startup log line, which is the first thing to check when a workstation behaves unexpectedly:
+The effective values are echoed in the startup log line (`version` since 1.2.0), which is the first thing to check when a workstation behaves unexpectedly:
 
 ```json
-{"level":30,"time":"2026-09-27T18:32:48.508Z","pid":11387,"hostname":"branch-ws-07","port":3000,"dataFile":"/opt/tredgate-loan/server/data/loans.json","logFile":"/opt/tredgate-loan/logs/app.log","servingFrontend":true,"msg":"Tredgate Loan API started"}
+{"level":30,"time":"2026-09-27T18:32:48.508Z","pid":11387,"hostname":"branch-ws-07","version":"1.2.0","port":3000,"dataFile":"/opt/tredgate-loan/server/data/loans.json","logFile":"/opt/tredgate-loan/logs/app.log","servingFrontend":true,"msg":"Tredgate Loan API started"}
 ```
 
 ## Ports in development versus single-process mode
@@ -52,10 +55,10 @@ Rules that follow:
 
 ## Node.js version requirement
 
-`package.json` declares `"engines": { "node": ">=20.19" }`. Node.js 20.19 or any newer release (22, 24) is supported; the CI pipeline runs on the current LTS release. Check the workstation with:
+`package.json` declares `"engines": { "node": ">=22.19" }` since 1.2.0 (1.1.0 required 20.19). Node.js 22.19 or any newer release (24) is supported; the CI pipeline runs on the current LTS release. Check the workstation with:
 
 ```bash
-node --version    # must print v20.19.0 or higher
+node --version    # must print v22.19.0 or higher
 npm --version
 ```
 
@@ -78,7 +81,7 @@ All operations are npm scripts defined in `package.json`. Run them from the inst
 | `npm test` | `vitest run` | Runs the business-rule and API test suites once (REF-050). |
 | `npm run test:watch` | `vitest` | Same suites, re-run on file changes. |
 | `npm run lint` | `eslint . --ext .vue,.js,...` | Static checks on all source files; part of CI. |
-| `npm run data:reset` | `tsx server/reset.ts` | Copies the seed over the data file (honors `DATA_FILE`) and prints `Loan data reset from seed: <path>`. Stop the server first (RB-006). |
+| `npm run data:reset` | `tsx server/reset.ts` | Copies the seed over the data file (honors `DATA_FILE`), deletes the audit trail (`AUDIT_FILE`, since 1.2.0) and prints `Loan data reset from seed: <path>`. Stop the server first (RB-006). |
 
 `npm start` fails if the build fails; the API never starts on a broken build. `npm run data:reset` does not go through the API and produces no log line; it prints to the console only.
 
@@ -90,12 +93,13 @@ A fresh checkout contains only source files. Running the system creates the foll
 |---|---|---|---|
 | `server/data/loans.json` | the loan store | At startup, before the port opens, and at any later read that finds the file missing (copy of the seed); also by `npm run data:reset` | Live data file (REF-020) |
 | `server/data/loans.json.tmp` | the loan store | For milliseconds during every write, then renamed over `loans.json` | Atomic-write staging file; a leftover copy after a crash is harmless |
+| `server/data/audit.log` | the audit trail (1.2.0) | At the first decision; one line appended per decision | Decision audit trail (REF-010); never committed (`*.log` is ignored) |
 | `logs/app.log` | the logger | At start; folder created if missing | Structured JSON log, appended forever (OPS-060) |
 | `dist/` | `npm run build` / `npm start` | Each build | Production UI served by the single-process mode |
 | `node_modules/` | `npm install` | Installation | Dependencies |
 | `node_modules/.tmp/*.tsbuildinfo` | `vue-tsc` | Each build | TypeScript incremental build cache |
 
-When `DATA_FILE` or `LOG_FILE` is set, the first two rows and the log row move to those paths. The log file has no size limit and no rotation in release 1.1; its growth is managed per OPS-060.
+When `DATA_FILE`, `AUDIT_FILE` or `LOG_FILE` is set, the corresponding rows move to those paths. The log file has no size limit and no rotation in release 1.2; its growth is managed per OPS-060.
 
 ## Committed versus generated files
 

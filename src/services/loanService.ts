@@ -1,4 +1,4 @@
-import type { CreateLoanInput, LoanApplication, LoanStatus } from '../../shared/loan'
+import type { CreateLoanInput, InstallmentRequest, InstallmentResult, LoanApplication, LoanStatus } from '../../shared/loan'
 
 /**
  * Client for the loan API served by server/ (proxied by Vite under /api in development).
@@ -51,4 +51,14 @@ export function updateLoanStatus(id: string, status: LoanStatus): Promise<LoanAp
  */
 export function autoDecideLoan(id: string): Promise<LoanApplication> {
   return request<LoanApplication>(`/loans/${id}/auto-decide`, { method: 'POST' })
+}
+
+/**
+ * Calculate the monthly installment and the amortization schedule for the values in the form
+ */
+export function calculateInstallments(input: InstallmentRequest): Promise<InstallmentResult> {
+  return request<InstallmentResult>('/installments/calculate', {
+    method: 'POST',
+    body: JSON.stringify(input)
+  })
 }

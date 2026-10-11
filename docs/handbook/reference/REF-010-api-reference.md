@@ -3,7 +3,7 @@ id: REF-010
 title: API Reference
 section: Reference
 tags: [api, http, endpoints, errors, curl, status-codes]
-updated: 2026-09-27
+updated: 2026-10-02
 ---
 
 # REF-010 API Reference
@@ -29,7 +29,7 @@ The API uses six status codes, each paired with fixed log lines (format in OPS-0
 | 400 | Validation failed or the body is not valid JSON | `request rejected` (warn, with `reason`) then `request completed` |
 | 404 | No application with that id, or no such route under `/api` | `request rejected` (warn) then `request completed` |
 | 409 | The application has already been approved or rejected | `request rejected` (warn) then `request completed` |
-| 500 | Unexpected failure, most often an unreadable data file (RB-003, RB-007) | `request failed with an unexpected error` (error, with stack) then `request completed` |
+| 500 | Unexpected failure, most often an unreadable data file (RB-003, RB-007); since 1.2.0 also a decision whose audit line could not be written (the body then carries the file system error) | `request failed with an unexpected error` (error, with stack) then `request completed` |
 
 Every request, successful or not, produces exactly one `request completed` line containing `method`, `url`, `status` and `durationMs`. All lines for one request share the same eight-character `reqId`. There is no API version in the path and no authentication header (see "What the API does not do").
 
@@ -46,10 +46,10 @@ curl http://localhost:3000/api/health
 Response `200`:
 
 ```json
-{ "status": "ok", "uptimeSeconds": 4 }
+{ "status": "ok", "version": "1.2.0", "uptimeSeconds": 4 }
 ```
 
-`uptimeSeconds` is the number of whole seconds since the Node.js process started, rounded to the nearest second. A value that resets unexpectedly means the process restarted.
+`uptimeSeconds` is the number of whole seconds since the Node.js process started, rounded to the nearest second. A value that resets unexpectedly means the process restarted. `version` (since 1.2.0) is the release installed, taken from `package.json`; a release or rollback (OPS-050) is confirmed by reading it.
 
 The health endpoint does **not** read the data file and writes nothing to the log beyond the request line. Consequently it can return `200` while `GET /api/loans` returns `500` because `server/data/loans.json` is corrupted. Health means "the process answers", nothing more. To check the data path as well, call `GET /api/loans` (RB-003).
 
@@ -190,13 +190,17 @@ Error cases, checked in this order:
 | No application with this id | 404 | `Loan with id <id> not found`, e.g. `Loan with id zzz not found` |
 | Application already decided | 409 | `Loan with id <id> has already been decided (approved)` or `... (rejected)` |
 | Data file corrupted | 500 | `Internal server error` |
+| Audit trail not writable (since 1.2.0) | 500 | The file system error, e.g. `EACCES: permission denied, open '/data/audit.log'`; the decision is **not** saved |
 
 Because the status value is validated before the application is looked up, a bad status on an unknown id returns 400, not 404. A 409 means the decision is final: create a new application instead (POL-050).
 
-Log lines for a successful call:
+Since 1.2.0 every decision is written to the audit trail (`AUDIT_FILE`, REF-030) **before** it is saved: one JSON line with `time`, `loanId`, `decision` and `reqId`. If that line cannot be written, the decision is rejected with 500 and the application stays `pending`.
+
+Log lines for a successful call (the `decision audited` line is new in 1.2.0):
 
 ```json
 {"level":30,"time":"2026-09-27T21:17:27.845Z","pid":36432,"hostname":"branch-ws-07","reqId":"61ac2f67","loanId":"ln-1003","status":"approved","msg":"loan status updated"}
+{"level":30,"time":"2026-09-27T21:17:27.845Z","pid":36432,"hostname":"branch-ws-07","reqId":"61ac2f67","loanId":"ln-1003","decision":"approved","msg":"decision audited"}
 {"level":30,"time":"2026-09-27T21:17:27.845Z","pid":36432,"hostname":"branch-ws-07","reqId":"61ac2f67","method":"PATCH","url":"/api/loans/ln-1003/status","status":200,"durationMs":1,"msg":"request completed"}
 ```
 
@@ -245,17 +249,47 @@ Error cases:
 | No application with this id | 404 | `Loan with id <id> not found` |
 | Application already decided | 409 | `Loan with id ln-1001 has already been decided (approved)` |
 | Data file corrupted | 500 | `Internal server error` |
+| Audit trail not writable (since 1.2.0) | 500 | The file system error; the decision is not saved (same rule as the manual decision) |
 
-Log lines for a successful call; the `status` field shows the outcome:
+Log lines for a successful call; the `status` field shows the outcome (since 1.2.0 a `decision audited` line follows it):
 
 ```json
 {"level":30,"time":"2026-09-27T21:17:27.839Z","pid":36432,"hostname":"branch-ws-07","reqId":"814c3ec7","loanId":"ln-1004","status":"approved","msg":"loan auto-decided"}
 {"level":30,"time":"2026-09-27T21:17:27.839Z","pid":36432,"hostname":"branch-ws-07","reqId":"814c3ec7","method":"POST","url":"/api/loans/ln-1004/auto-decide","status":200,"durationMs":1,"msg":"request completed"}
 ```
 
+## POST /api/installments/calculate: amortization schedule
+
+Since 1.2.0. Returns the monthly payment and the full amortization schedule for the values in the New Loan Application form, using the flat-rate formula of POL-030 (`buildInstallmentSchedule` in `shared/loanRules.ts`). The UI calls it while the officer types; nothing is stored.
+
+Body: the four `CreateLoanInput` fields, validated with the same rules and 400 messages as `POST /api/loans`, plus an optional `requestedAt` (ISO timestamp). The first payment is due one month after `requestedAt` (default: now).
+
+```bash
+curl -X POST http://localhost:3000/api/installments/calculate \
+  -H "Content-Type: application/json" \
+  -d '{"applicantName":"Alice Smith","amount":12000,"termMonths":3,"interestRate":0.1,"requestedAt":"2026-10-05T06:30:00.000Z"}'
+```
+
+Response `200`:
+
+```json
+{
+  "monthlyPayment": 4400,
+  "totalRepayable": 13200,
+  "totalInterest": 1200,
+  "schedule": [
+    { "month": 1, "dueDate": "2026-11-05", "payment": 4400, "principal": 4000, "interest": 400, "balance": 8000 },
+    { "month": 2, "dueDate": "2026-12-05", "payment": 4400, "principal": 4000, "interest": 400, "balance": 4000 },
+    { "month": 3, "dueDate": "2027-01-05", "payment": 4400, "principal": 4000, "interest": 400, "balance": 0 }
+  ]
+}
+```
+
+Principal and interest are spread evenly over the term; the last row absorbs rounding so the balance ends at exactly 0. Results are cached in memory by the API (`server/installmentCache.ts`); the `cacheEntries` field of the `process metrics` log line (OPS-060) shows how many are held.
+
 ## Unknown routes and malformed JSON
 
-**Unknown routes.** Any method and path under `/api` other than the five endpoints returns `404` with a JSON body naming the method and the full path, query string included:
+**Unknown routes.** Any method and path under `/api` other than the six endpoints returns `404` with a JSON body naming the method and the full path, query string included:
 
 ```bash
 curl -X DELETE http://localhost:3000/api/loans/ln-1001
@@ -286,14 +320,14 @@ All of these are logged as `request rejected` at level 40 with the message in `r
 
 ## What the API does not do
 
-Release 1.1 keeps the API deliberately small. The following are not available, stated plainly so that no procedure is built around a feature that does not exist.
+Release 1.2 keeps the API deliberately small. The following are not available, stated plainly so that no procedure is built around a feature that does not exist.
 
 - **No authentication or authorization.** Anyone who can reach the port can create and decide applications, so the workstation must not expose port 3000 (or 5173) beyond the local machine. Role limits and the four-eyes rule are enforced procedurally through the Decision Register (POL-050, OPS-010), not by the system.
 - **No pagination, filtering or sorting.** `GET /api/loans` always returns the whole file; there is no single-record `GET /api/loans/:id`.
 - **No delete.** An application stays in the data file until the retention procedure of POL-070 removes it. A mistaken pending application is rejected manually.
 - **No edit.** `applicantName`, `amount`, `termMonths` and `interestRate` cannot be changed after creation. A typo means a new application; the wrong one is rejected.
 - **No change of a decision.** Approved and rejected applications are final; every attempt returns `409`. Reversing a decision means a new application and an entry in the Decision Register.
-- **No decision metadata.** Who decided, when and why is not stored; only `status` changes. The log holds `loanId`, `status` and a timestamp per decision (RB-002); the Decision Register holds the signatures.
-- **No installment calculation endpoint.** The monthly installment is computed in the UI with the flat-rate formula of POL-030 (`amount x (1 + interestRate) / termMonths`); the API never returns it.
+- **No decision metadata in the record.** Who decided and why is not stored; only `status` changes. Since 1.2.0 the audit trail (`AUDIT_FILE`) holds `time`, `loanId`, `decision` and `reqId` per decision, the log holds the same `loanId` and `status` (RB-002); the Decision Register holds the signatures.
+- **No installment persistence.** `POST /api/installments/calculate` (1.2.0) computes and returns the schedule but stores nothing; the table still computes the installment column locally with the same shared formula of POL-030.
 - **No product-range check.** Amounts and terms outside the SPL range are accepted if they are valid numbers (POL-020).
 - **No disbursement, repayment or arrears data.** These live in Tredgate Core Banking; identity checks live in KYC Desk.

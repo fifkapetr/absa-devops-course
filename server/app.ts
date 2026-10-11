@@ -1,7 +1,10 @@
 import express from 'express'
 import { createRequire } from 'node:module'
-import type { LoanApplication, LoanStatus } from '../shared/loan'
+import type { InstallmentRequest, LoanApplication, LoanStatus } from '../shared/loan'
+import { buildInstallmentSchedule, validateLoanInput } from '../shared/loanRules'
+import type { AuditLog } from './auditLog'
 import { HttpError, errorHandler, notFoundHandler } from './errors'
+import { cacheKey, getCached, putCached } from './installmentCache'
 import { requestLogger, type Logger } from './logger'
 import { createLoanService } from './loanService'
 import type { LoanStore } from './loanStore'
@@ -22,6 +25,10 @@ const QUOTE_ERRORS: Record<string, string> = {
 export interface AppOptions {
   store: LoanStore
   logger: Logger
+  /** Decision audit trail; decisions are not saved when it cannot be written */
+  audit?: AuditLog
+  /** Release version reported by GET /api/health */
+  version?: string
   /** Serve a built frontend from this folder (used by `npm start`) */
   staticDir?: string
 }
@@ -30,15 +37,28 @@ export interface AppOptions {
  * Build the Express app.
  * Kept separate from index.ts so tests can start it on any port with their own store.
  */
-export function createApp({ store, logger, staticDir }: AppOptions) {
+export function createApp({ store, logger, audit, version = '0.0.0', staticDir }: AppOptions) {
   const app = express()
-  const loans = createLoanService(store)
+  const loans = createLoanService(store, audit)
 
   app.use(requestLogger(logger))
   app.use(express.json())
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) })
+    res.json({ status: 'ok', version, uptimeSeconds: Math.round(process.uptime()) })
+  })
+
+  app.post('/api/installments/calculate', (req, res) => {
+    const body = req.body as InstallmentRequest
+    validateLoanInput(body)
+    const key = cacheKey(body)
+    let entry = getCached(key)
+    if (!entry) {
+      req.log.info({ request: body }, 'installment cache miss')
+      const startDate = body.requestedAt ? new Date(body.requestedAt) : new Date()
+      entry = putCached(key, buildInstallmentSchedule(body, Number.isNaN(startDate.getTime()) ? new Date() : startDate))
+    }
+    res.type('application/json').send(entry.response)
   })
 
   app.get('/api/loans', async (_req, res) => {
@@ -56,14 +76,16 @@ export function createApp({ store, logger, staticDir }: AppOptions) {
     if (status !== 'approved' && status !== 'rejected') {
       throw new HttpError(400, "Status must be 'approved' or 'rejected'")
     }
-    const loan = await loans.updateStatus(req.params.id, status)
+    const loan = await loans.updateStatus(req.params.id, status, req.log.bindings().reqId)
     req.log.info({ loanId: loan.id, status }, 'loan status updated')
+    if (audit) req.log.info({ loanId: loan.id, decision: loan.status }, 'decision audited')
     res.json(loan)
   })
 
   app.post('/api/loans/:id/auto-decide', async (req, res) => {
-    const loan = await loans.autoDecide(req.params.id)
+    const loan = await loans.autoDecide(req.params.id, req.log.bindings().reqId)
     req.log.info({ loanId: loan.id, status: loan.status }, 'loan auto-decided')
+    if (audit) req.log.info({ loanId: loan.id, decision: loan.status }, 'decision audited')
     res.json(loan)
   })
 

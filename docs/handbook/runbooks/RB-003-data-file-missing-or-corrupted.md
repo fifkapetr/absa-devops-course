@@ -3,7 +3,7 @@ id: RB-003
 title: Data File Missing or Corrupted
 section: Runbooks
 tags: [data-file, loans.json, corruption, syntaxerror, 500, seed, data-reset, backup, ki-001]
-updated: 2026-09-27
+updated: 2026-10-02
 ---
 
 # RB-003 Data File Missing or Corrupted
@@ -19,13 +19,15 @@ A corrupted data file shows itself as a total outage of everything that touches 
 
 A missing file produces no error: the store silently recreates it from the seed and the UI shows the six seed applications instead of the branch's data. "Only the six standard applications are there" is therefore also a reason to open this runbook.
 
+Since 1.2.0 a third shape exists, **the data file is not writable**: the process starts, writes one level 40 line `"msg":"persistence disabled"` with `reason` `EACCES <path>` (OPS-060) and serves from memory. Creates return 201 and the tile grows, but decisions fail with 500 and the error text `EACCES: permission denied, open '<AUDIT_FILE>'`, and every restart returns the tile to the six seed applications. Fix the ownership or permissions of the data folder (and of `AUDIT_FILE`), restart, and re-enter the applications created since the `persistence disabled` line from the paper records; never run `npm run data:reset` (RB-006).
+
 ## When to use this runbook
 
 Use this runbook when the symptoms above are present, or when `server/data/loans.json` was edited, moved, deleted or restored by hand or by a backup or antivirus tool.
 
 The store's behavior in version 1.1 determines the procedure:
 
-- Nothing is cached in memory. Every request reads the file, and every write reads, changes and saves it in one serialized step, so a repaired file takes effect on the next request without a restart.
+- Nothing is cached in memory in normal operation (the in-memory fallback of 1.2.0 is announced by `persistence disabled`). Every request reads the file, and every write reads, changes and saves it in one serialized step, so a repaired file takes effect on the next request without a restart.
 - A missing file (`ENOENT`) is recreated from `server/data/loans.seed.json` automatically and silently; no log line records it.
 - A corrupted file is never repaired or replaced automatically, because a file with content may still be salvageable and overwriting it would destroy evidence and data.
 - Writes go to `loans.json.tmp` and are renamed over the data file, so a write interrupted by Ctrl+C or a crash leaves either the old or the new complete file, never a half-written one (fixed in 1.1.0, KI-001).

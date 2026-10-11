@@ -29,3 +29,33 @@ export interface CreateLoanInput {
   termMonths: number
   interestRate: number
 }
+
+/**
+ * Input for the installment calculator (POST /api/installments/calculate).
+ * `requestedAt` is the moment the officer asked; the schedule starts the month after it.
+ */
+export interface InstallmentRequest extends CreateLoanInput {
+  requestedAt?: string  // ISO timestamp
+}
+
+/**
+ * One row of an amortization schedule
+ */
+export interface InstallmentRow {
+  month: number         // 1..termMonths
+  dueDate: string       // YYYY-MM-DD
+  payment: number       // monthly installment
+  principal: number     // part of the payment that repays the amount
+  interest: number      // part of the payment that is interest
+  balance: number       // amount still owed after this payment
+}
+
+/**
+ * Result of the installment calculator
+ */
+export interface InstallmentResult {
+  monthlyPayment: number
+  totalRepayable: number
+  totalInterest: number
+  schedule: InstallmentRow[]
+}

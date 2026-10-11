@@ -3,7 +3,7 @@ id: CHANGELOG
 title: Changelog
 section: Changelog
 tags: [changelog, versions, releases, upgrade, semantic-versioning]
-updated: 2026-09-27
+updated: 2026-10-02
 ---
 
 # Changelog
@@ -11,6 +11,24 @@ updated: 2026-09-27
 ## How this changelog is organized
 
 This changelog records every released version of Tredgate Loan, newest first. Versions follow semantic versioning, MAJOR.MINOR.PATCH, with a `-beta` suffix for a pilot version; the rules for choosing a number are in OPS-050. Each version lists its release date and up to three lists, **Added**, **Changed**, and **Fixed**, naming the Known Issue (KI-001 to KI-004) that a fix closes. A branch runs one version at a time; the installed version is written in the shift log at every release, and manual workstation steps appear under "Upgrade notes". Entries are drafted in the pull request that makes the change and finalized by Platform Engineering at release time.
+
+## 1.2.0 (2026-10-02)
+
+Container deployment pilot at branch CZ-PRG-01 plus two features. Rollback target: 1.1.0.
+
+**Added**
+
+- Installment calculator `POST /api/installments/calculate`: monthly installment and full amortization schedule from the flat-rate formula of POL-030, shown in the New Loan Application form while the officer types; results are cached in memory (REF-010).
+- Decision audit trail: every approve, reject and auto-decide appends `time`, `loanId`, `decision`, `reqId` to `AUDIT_FILE` (default `server/data/audit.log`) before the decision is saved; if the line cannot be written the decision fails with 500 and is not saved. New log message `decision audited` (OPS-060, REF-030).
+- Process metrics: a `process metrics` log line every `METRICS_INTERVAL_MS` (default 60 s) with `heapUsedMB`, `rssMB`, `cacheEntries`, `uptimeSeconds` (OPS-060).
+- Container deployment pilot: `docker/`, `compose.yaml`, gateway on port 8080 in front of `loan-api` and `docs-search` (REF-040); operations tooling under `ops/` (REF-030).
+
+**Changed**
+
+- `GET /api/health` and the `Tredgate Loan API started` line report `version`.
+- Start-up checks that `DATA_FILE` is writable; if not, one `persistence disabled` warning is written and the process serves from memory (seed data) instead of failing (REF-030).
+- `npm run data:reset` also deletes the audit trail.
+- Node.js 22.19 or newer is required (`engines`).
 
 ## 1.1.0 (2026-09-15)
 

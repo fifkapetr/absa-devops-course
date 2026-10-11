@@ -3,6 +3,7 @@ import {
   validateLoanInput,
   decideLoan,
   calculateMonthlyPayment,
+  buildInstallmentSchedule,
   LoanValidationError
 } from '../shared/loanRules'
 import type { CreateLoanInput } from '../shared/loan'
@@ -109,5 +110,34 @@ describe('loanRules', () => {
       // total = 100000 * 1.08 = 108000, monthly = 108000 / 60 = 1800
       expect(calculateMonthlyPayment({ amount: 100000, termMonths: 60, interestRate: 0.08 })).toBe(1800)
     })
+  })
+})
+
+describe('buildInstallmentSchedule', () => {
+  it('spreads principal and interest evenly and ends with a zero balance', () => {
+    const result = buildInstallmentSchedule(
+      { amount: 12000, termMonths: 12, interestRate: 0.1 },
+      new Date('2026-10-05T06:30:00.000Z')
+    )
+    expect(result.monthlyPayment).toBe(1100)
+    expect(result.totalRepayable).toBe(13200)
+    expect(result.totalInterest).toBe(1200)
+    expect(result.schedule).toHaveLength(12)
+    expect(result.schedule[0]).toEqual({
+      month: 1,
+      dueDate: '2026-11-05',
+      payment: 1100,
+      principal: 1000,
+      interest: 100,
+      balance: 11000
+    })
+    expect(result.schedule[11]?.balance).toBe(0)
+  })
+
+  it('absorbs rounding in the last row so the schedule adds up', () => {
+    const result = buildInstallmentSchedule({ amount: 10000, termMonths: 7, interestRate: 0.05 })
+    const paid = result.schedule.reduce((sum, row) => sum + row.principal, 0)
+    expect(Math.round(paid * 100) / 100).toBe(10000)
+    expect(result.schedule.at(-1)?.balance).toBe(0)
   })
 })

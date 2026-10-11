@@ -1,4 +1,4 @@
-import type { CreateLoanInput, LoanApplication, LoanStatus } from './loan'
+import type { CreateLoanInput, InstallmentResult, InstallmentRow, LoanApplication, LoanStatus } from './loan'
 
 /**
  * Business rules of the Tredgate lending policy.
@@ -65,4 +65,48 @@ export function calculateMonthlyPayment(
 ): number {
   const total = loan.amount * (1 + loan.interestRate)
   return total / loan.termMonths
+}
+
+/**
+ * Build the full amortization schedule for the flat-rate formula of POL-030.
+ * Principal and interest are spread evenly over the term; the last row absorbs rounding.
+ * `startDate` is the date the loan is requested; the first installment is due one month later.
+ */
+export function buildInstallmentSchedule(
+  loan: Pick<LoanApplication, 'amount' | 'termMonths' | 'interestRate'>,
+  startDate: Date = new Date()
+): InstallmentResult {
+  const monthlyPayment = round2(calculateMonthlyPayment(loan))
+  const totalInterest = round2(loan.amount * loan.interestRate)
+  const totalRepayable = round2(loan.amount + totalInterest)
+  const monthlyInterest = round2(totalInterest / loan.termMonths)
+  const monthlyPrincipal = round2(loan.amount / loan.termMonths)
+
+  const schedule: InstallmentRow[] = []
+  let balance = loan.amount
+  for (let month = 1; month <= loan.termMonths; month++) {
+    const last = month === loan.termMonths
+    const principal = last ? round2(balance) : monthlyPrincipal
+    const interest = last ? round2(totalInterest - monthlyInterest * (loan.termMonths - 1)) : monthlyInterest
+    balance = last ? 0 : round2(balance - principal)
+    schedule.push({
+      month,
+      dueDate: addMonths(startDate, month),
+      payment: round2(principal + interest),
+      principal,
+      interest,
+      balance
+    })
+  }
+
+  return { monthlyPayment, totalRepayable, totalInterest, schedule }
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+function addMonths(date: Date, months: number): string {
+  const due = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, Math.min(date.getUTCDate(), 28)))
+  return due.toISOString().slice(0, 10)
 }

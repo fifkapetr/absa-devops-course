@@ -53,8 +53,8 @@ Tredgate Loan is a teaching app, not a product. Everything runs locally with Nod
 ## File Structure
 
 - `shared/` - Domain types and business rules shared by frontend and backend
-- `server/` - Express backend: routes, service, store, logger, config
-- `server/data/` - Seed data (the live `loans.json` is generated and not committed)
+- `server/` - Express backend: routes, service, store (file or in-memory fallback), audit trail, installment cache, metrics, logger, config
+- `server/data/` - Seed data (the live `loans.json` and `audit.log` are generated and not committed)
 - `src/components/` - Vue components
 - `src/services/` - API client
 - `tests/` - Vitest tests

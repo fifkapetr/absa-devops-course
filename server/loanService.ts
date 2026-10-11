@@ -1,12 +1,14 @@
 import type { CreateLoanInput, LoanApplication, LoanStatus } from '../shared/loan'
 import { decideLoan, validateLoanInput } from '../shared/loanRules'
+import type { AuditLog } from './auditLog'
 import { HttpError } from './errors'
 import type { LoanStore } from './loanStore'
 
 /**
  * Loan use cases. Each write is a single, serialized store update.
+ * Decisions are written to the audit trail first (1.2.0): if that fails, nothing is saved.
  */
-export function createLoanService(store: LoanStore) {
+export function createLoanService(store: LoanStore, audit?: AuditLog) {
   return {
     list(): Promise<LoanApplication[]> {
       return store.read()
@@ -38,7 +40,9 @@ export function createLoanService(store: LoanStore) {
       })
     },
 
-    updateStatus(id: string, status: LoanStatus): Promise<LoanApplication> {
+    async updateStatus(id: string, status: LoanStatus, reqId = '-'): Promise<LoanApplication> {
+      findPendingLoan(await store.read(), id)
+      await audit?.record({ loanId: id, decision: status, reqId })
       return store.update(loans => {
         const loan = findPendingLoan(loans, id)
         loan.status = status
@@ -46,10 +50,12 @@ export function createLoanService(store: LoanStore) {
       })
     },
 
-    autoDecide(id: string): Promise<LoanApplication> {
+    async autoDecide(id: string, reqId = '-'): Promise<LoanApplication> {
+      const decision = decideLoan(findPendingLoan(await store.read(), id))
+      await audit?.record({ loanId: id, decision, reqId })
       return store.update(loans => {
         const loan = findPendingLoan(loans, id)
-        loan.status = decideLoan(loan)
+        loan.status = decision
         return loan
       })
     }
