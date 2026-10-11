@@ -6,6 +6,7 @@ const app = createRagApp({
   docsRoot: ragConfig.docsRoot,
   indexPath: ragConfig.indexPath,
   defaultK: ragConfig.defaultK,
+  adminToken: ragConfig.adminToken,
   log: line => console.log(`[rag] ${line}`)
 })
 

@@ -82,8 +82,13 @@ All operations are npm scripts defined in `package.json`. Run them from the inst
 | `npm run test:watch` | `vitest` | Same suites, re-run on file changes. |
 | `npm run lint` | `eslint . --ext .vue,.js,...` | Static checks on all source files; part of CI. |
 | `npm run data:reset` | `tsx server/reset.ts` | Copies the seed over the data file (honors `DATA_FILE`), deletes the audit trail (`AUDIT_FILE`, since 1.2.0) and prints `Loan data reset from seed: <path>`. Stop the server first (RB-006). |
+| `npm run setup` | `tsx ops/tools/setup.ts` | Since 1.2.0. Copies `.env.example` to `.env` when no `.env` exists (container pilot configuration). |
+| `npm run ops:incident` | `tsx ops/tools/incident.ts` | Since 1.2.0. Runs the API under a restarting supervisor with a 96 MB heap (`--heap`) and `METRICS_INTERVAL_MS=5000`, plus the handbook search on 3001; reproduces the restart loop of the container pilot on a workstation. |
+| `npm run ops:load` | `tsx ops/tools/load.ts` | Since 1.2.0. Traffic generator (`--target`, `--duration`, `--rps`): 60 % calculator, 25 % loan reads, 15 % handbook search; prints p50/p95/p99 and exits 1 above 1 % errors or 500 ms p95. |
+| `npm run ops:verify` | `tsx ops/tools/verify.ts` | Since 1.2.0. Static checks OPS-001 to OPS-011 of `docker/*.Dockerfile`, `.dockerignore` and `compose.yaml` (`--path <dir>` for another folder); exit 1 on any FAIL. No container engine needed. |
+| `npm run logs` | `tsx ops/tools/logs.ts` | Since 1.2.0. Cross-platform log reader: `--file`, `--service`, `--level`, `--from`/`--to`, `--grep`, `--msg`, `--status`, `--redact`, `--count`, `--head`. Understands pino JSON, nginx access/error lines and Docker events with a `service \|` prefix. |
 
-`npm start` fails if the build fails; the API never starts on a broken build. `npm run data:reset` does not go through the API and produces no log line; it prints to the console only.
+`npm start` fails if the build fails; the API never starts on a broken build. `npm run data:reset` does not go through the API and produces no log line; it prints to the console only. Every `ops` script and `npm run logs` print their options with `--help`; they are TypeScript run with `tsx`, so they behave the same in PowerShell and in a Unix shell.
 
 ## Files and folders created at runtime
 

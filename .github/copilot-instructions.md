@@ -60,6 +60,10 @@ Tredgate Loan is a teaching app, not a product. Everything runs locally with Nod
 - `tests/` - Vitest tests
 - `docs/handbook/` - Fictional operations handbook: policy, operations, runbooks, reference, known issues. Keep it consistent with the code: a change in validation, decisions, API or logging must update the matching handbook document.
 - `rag/` - Documentation search tool: chunks and indexes `docs/handbook`; CLI (`npm run rag`), HTTP API on port 3001 (`rag/server.ts`) and an optional MCP stdio server (`rag/mcp.ts`)
+- `ops/tools/` - Operations tooling run with `tsx` (`npm run ops:*`, `npm run logs`, `npm run setup`); `ops/legacy/deploy.sh` is the old bash deployment (read only, never run); `ops/k8s/` is an explain-only Kubernetes sketch
+- `docker/`, `compose.yaml` - Container pilot: gateway (nginx 8080), loan-api (3000), docs-search (3001)
+- `incident/` - Recorded incidents (logs, chat export, e-mails, ticket) used for postmortem exercises
+- `templates/` - Postmortem and executive summary templates (OPS-040)
 - `.github/skills/loan-handbook-search/` - Skill describing how to use the search API
 - `logs/` - Runtime logs (generated, not committed)
 
@@ -70,5 +74,10 @@ Tredgate Loan is a teaching app, not a product. Everything runs locally with Nod
 - `npm run build` - Type-check all projects and build the frontend
 - `npm run test` - Run tests
 - `npm run lint` - Run ESLint
-- `npm run data:reset` - Restore the data file from the seed
+- `npm run data:reset` - Restore the data file from the seed and clear the audit trail
+- `npm run setup` - Create `.env` from `.env.example` (container pilot configuration)
+- `npm run ops:incident` - Run the API under a restarting supervisor with a small heap plus the handbook search (reproduces the pilot's restart loop)
+- `npm run ops:load` - Traffic generator against the API and the handbook search (`--duration`, `--rps`); exit 1 above 1 % errors or 500 ms p95
+- `npm run ops:verify` - Static OPS-001..011 checks of `docker/`, `.dockerignore`, `compose.yaml` (`--path <dir>` for another folder)
+- `npm run logs` - Cross-platform log reader (`--file`, `--service`, `--level`, `--from`, `--to`, `--grep`, `--msg`, `--redact`, `--count`, `--head`)
 - `npm run rag -- "question"` - Find the handbook sections relevant to a question (`npm run rag:index` rebuilds the index, `npm run rag:serve` runs the API alone, `npm run rag:mcp` the MCP server)

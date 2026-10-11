@@ -10,5 +10,6 @@ export const ragConfig = {
   docsRoot: process.env.RAG_DOCS ?? path.join(rootDir, 'docs', 'handbook'),
   indexPath: process.env.RAG_INDEX ?? path.join(ragDir, 'index.json'),
   port: Number(process.env.RAG_PORT ?? 3001),
-  defaultK: 5
+  defaultK: 5,
+  adminToken: process.env.DOCS_ADMIN_TOKEN
 }

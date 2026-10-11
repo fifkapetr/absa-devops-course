@@ -72,6 +72,18 @@ npm run lint
 npm run build
 ```
 
+### Operations tooling
+
+Cross-platform TypeScript scripts under `ops/tools/` (every one supports `--help`):
+
+```bash
+npm run setup          # .env from .env.example
+npm run ops:incident   # API under a restarting supervisor with a 96 MB heap + handbook search
+npm run ops:load       # traffic generator; exit 1 above 1 % errors or 500 ms p95
+npm run ops:verify     # OPS-001..011 checks of docker/, .dockerignore, compose.yaml
+npm run logs -- --file logs/app.log --level warn --count
+```
+
 ### Reset the data
 
 ```bash

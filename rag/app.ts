@@ -7,13 +7,15 @@ export interface RagAppOptions {
   indexPath: string
   defaultK?: number
   log?: (line: string) => void
+  /** When set, POST /reindex requires this token (query `token` or header `X-Admin-Token`) */
+  adminToken?: string
 }
 
 const USAGE = `Tredgate Loan documentation search (RAG API)
 
 GET  /health                  -> { ok, files, chunks, documentationTokens, indexedAt }
 GET  /search?q=<text>&k=<n>   -> { query, results: [{ chunk: { id, file, docId, docTitle, section, heading, text, tokens }, score }], report }
-POST /reindex                 -> rebuilds the index from the documentation folder
+POST /reindex                 -> rebuilds the index from the documentation folder (token required when DOCS_ADMIN_TOKEN is set)
 
 Example: curl "http://localhost:3001/search?q=maximum+amount+for+automatic+approval&k=3"
 The report says how many tokens the retrieved sections cost compared with the whole documentation.
@@ -23,7 +25,7 @@ The report says how many tokens the retrieved sections cost compared with the wh
  * The RAG HTTP API. Same search as the CLI, callable by anything that can send an HTTP request.
  * Kept separate from index.ts so tests can start it on any port with their own documentation folder.
  */
-export function createRagApp({ docsRoot, indexPath, defaultK = 5, log = () => {} }: RagAppOptions) {
+export function createRagApp({ docsRoot, indexPath, defaultK = 5, log = () => {}, adminToken }: RagAppOptions) {
   const app = express()
   let index: SearchIndex | undefined
 
@@ -67,7 +69,12 @@ export function createRagApp({ docsRoot, indexPath, defaultK = 5, log = () => {}
     res.json(response)
   })
 
-  app.post('/reindex', (_req, res) => {
+  app.post('/reindex', (req, res) => {
+    if (adminToken && req.query.token !== adminToken && req.get('x-admin-token') !== adminToken) {
+      log('reindex refused: missing or wrong admin token')
+      res.status(401).json({ error: 'Admin token required' })
+      return
+    }
     index = buildIndex(docsRoot)
     saveIndex(index, indexPath)
     log(`index rebuilt on request: ${index.chunks.length} chunks from ${index.fileCount} files`)
