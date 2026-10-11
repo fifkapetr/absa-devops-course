@@ -1,0 +1,51 @@
+# Tredgate Loan API on Kubernetes: a sketch from the container pilot, never applied.
+# Kept for the discussion of what a cluster deployment would need; branch workstations do not run Kubernetes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loan-api
+  labels:
+    app: loan-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loan-api
+  template:
+    metadata:
+      labels:
+        app: loan-api
+    spec:
+      containers:
+        - name: loan-api
+          image: tredgate/loan-api:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DATA_FILE
+              value: /data/loans.json
+            - name: AUDIT_FILE
+              value: /data/audit.log
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loan-api
+spec:
+  selector:
+    app: loan-api
+  ports:
+    - port: 80
+      targetPort: 3000
