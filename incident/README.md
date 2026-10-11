@@ -4,8 +4,8 @@ Evidence of two incidents at the container pilot of branch CZ-PRG-01, kept for p
 
 | Folder | Incident | Severity | Story |
 |---|---|---|---|
-| `INC-20261005-01/` | Loan API restart loop | S2 | Monday 2026-10-05: release 1.2.0 goes to the pilot at 08:30 CEST; from 09:12 the API container is killed by its memory limit about every eight minutes and restarted by a watchdog; rollback to 1.1.0 at 10:20. |
-| `INC-20261007-01/` | Lost applications after redeploy | S2 | Wednesday 2026-10-07: a hardened container configuration runs as a non-root user on a root-owned data folder; the API starts with persistence disabled, keeps the day's applications in memory and loses them at a 15:42 restart. |
+| `INC-20261005-01/` | Loan API restart loop | S2 | Monday 2026-10-05: release 1.2.0 goes to the pilot at 08:30 CEST; from 09:12 officers see bursts of 502 errors; rollback to 1.1.0 at 10:20; resolved 11:30. |
+| `INC-20261007-01/` | Lost applications after redeploy | S2 | Wednesday 2026-10-07: a reworked container configuration is deployed at 13:00 CEST; two approvals fail with a 500 during the afternoon; after a 15:42 restart the Total Applications tile drops from 9 to 6; resolved 17:00. |
 
 ## What each folder contains
 
@@ -18,9 +18,9 @@ Evidence of two incidents at the container pilot of branch CZ-PRG-01, kept for p
 | `comms/ticket.json` | The incident log entry (OPS-040) with timestamps, roles and work notes | **CEST, with `+02:00` offset** |
 | `deploy/` (INC-20261007-01 only) | The Dockerfiles, compose file and `.dockerignore` that were deployed and caused the incident | |
 
-The log files are large on purpose (the first one has about 80,000 lines). Read them with `npm run logs -- --file incident/<id>/logs/combined.log ...` (filters, counts, redaction; see `--help`), not by pasting them into a chat.
+The log files are large on purpose (the first one has about 80,000 lines). Read them with `npx tsx ops/tools/logs.ts --file incident/<id>/logs/combined.log ...` (filters, counts, redaction; see `--help`; the same in PowerShell and zsh), not by pasting them into a chat.
 
-The logs contain applicant names (a defect of release 1.2.0, see OPS-060 and POL-070). Use `--redact` when quoting lines anywhere.
+Some log lines contain applicant names. Use `--redact` when quoting lines anywhere (OPS-060, POL-070).
 
 ## Regenerating the logs
 

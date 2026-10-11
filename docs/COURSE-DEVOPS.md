@@ -2,62 +2,88 @@
 
 Participant quick reference for the 4-hour course on branch `course/devops-autopilot`. You work with GitHub Copilot (VS Code agent mode and Copilot CLI) on a repository that is **broken on purpose**: release 1.2.0 of Tredgate Loan, its first container pilot, two recorded incidents and the tooling to investigate them. Everything is fictional. Everything runs on plain Node.js; Docker is optional.
 
+All commands below work in Windows PowerShell 5.1, PowerShell 7 and zsh. Where a command differs per shell, both forms are given.
+
 ## Setup (10 minutes)
 
 Requirements: Node.js 22.19 or newer (`node --version`), npm, Git, VS Code with GitHub Copilot, optionally Copilot CLI (`npm install -g @github/copilot`).
 
-```bash
+```
 git clone <repository url>
 cd tredgate-loan
 git checkout course/devops-autopilot
 npm install
-npm run setup          # creates .env from .env.example
-npm run build          # type-checks everything and builds the UI
-npm run test           # 60 tests, all green on the course branch
+npm run setup
+npm run build
+npm run test
 ```
 
-Start the app the normal way with `npm run dev` (UI on http://localhost:5173, API on 3000, handbook search on 3001). The new installment preview in the form is the 1.2.0 feature at the heart of incident 1.
+`npm run setup` creates `.env` from `.env.example`; `npm run build` type-checks everything and builds the UI; `npm run test` runs 62 tests, all green on the course branch. Start the app the normal way with `npm run dev` (UI on http://localhost:5173, API on 3000, handbook search on 3001).
 
-## Scripts you will use
+A quick HTTP check of the API:
 
-| Script | What it does | Typical use |
+```
+curl.exe http://localhost:3000/api/health          # Windows (curl without .exe is a PowerShell alias)
+curl http://localhost:3000/api/health              # macOS
+Invoke-RestMethod http://localhost:3000/api/health # PowerShell alternative
+```
+
+## Tools
+
+The operations tools live in `ops/tools/` and are TypeScript run with `tsx`. Call them directly with `npx tsx`; this form needs no `--` separator and behaves the same in every shell. The `npm run` aliases (`npm run logs -- --file ...`, `npm run ops:verify -- --path ...`) are equivalent. Every tool prints its options with `--help`.
+
+| Tool | Direct form | What it does |
 |---|---|---|
-| `npm run ops:incident` | API under a restarting supervisor with a 96 MB heap and a `process metrics` line every 5 s, plus the handbook search | Reproduce the restart loop locally; Ctrl+C stops everything |
-| `npm run ops:load` | 30 requests/s for 180 s (60 % calculator, 25 % loan reads, 15 % handbook search); live line every 10 s; exit 1 above 1 % errors, 500 ms p95 or when the API restarted | Run next to `ops:incident`; the API crashes after 60 to 120 s; after your fix it must pass |
-| `npm run ops:verify` | Static checks OPS-001 to OPS-011 of `docker/*.Dockerfile`, `.dockerignore`, `compose.yaml`; `--path <dir>` for another folder | Before and after fixing the container files; also on `incident/INC-20261007-01/deploy` |
-| `npm run logs -- --file <log> ...` | Cross-platform log reader: `--service`, `--level`, `--from`, `--to`, `--grep`, `--msg`, `--status`, `--redact`, `--count`, `--head`, `--line-numbers` | Investigate `incident/*/logs/combined.log` without pasting it anywhere |
-| `npm run rag -- "question"` | Handbook search (also on http://localhost:3001 and as the `loan-handbook-search` skill) | Ask what OPS-040, OPS-060, POL-070 require |
-| `npm run data:reset` | Seed data back, audit trail deleted | After experiments |
-| `npm run incidents:generate` | Regenerates the incident logs from fixed seeds | Only if you broke them |
+| Log reader | `npx tsx ops/tools/logs.ts --file <log> [options]` | Streams a log file of any size and prints the lines that match the filters. Options: `--service`, `--level` (30/40/50 or info/warn/error), `--from` / `--to` (ISO UTC), `--grep <regex>` (repeat for OR), `--msg`, `--status` (e.g. 502 or 5xx), `--redact`, `--count`, `--head N`, `--tail N`, `--line-numbers` |
+| Infrastructure checks | `npx tsx ops/tools/verify.ts [--path <dir>]` | Static rules OPS-001 to OPS-011 for `docker/*.Dockerfile`, `.dockerignore` and `compose.yaml`; one PASS/WARN/FAIL line per rule, exit 1 on any FAIL |
+| Incident supervisor | `npx tsx ops/tools/incident.ts [--heap MB] [--port N] [--data-file <path>] [--log-file <path>]` | Runs the API the way the pilot host does (restarting supervisor, 96 MB heap, metrics every 5 s) plus the handbook search on 3001. Ctrl+C stops everything |
+| Load generator | `npx tsx ops/tools/load.ts [--duration s] [--rps n] [--target url]` | Realistic traffic for 180 s at 30 req/s; live line every 10 s; summary with p50/p95/p99; the last line is `RESULT: PASS` or `RESULT: FAIL (<reasons>)`, exit 1 on FAIL |
+| Handbook search | `npx tsx rag/cli.ts "<question>" --k 5` | The handbook sections that answer a question (also as the `loan-handbook-search` skill and on http://localhost:3001) |
+| Data reset | `npm run data:reset` | Seed data back, audit trail deleted |
+| Setup | `npm run setup` | `.env` from `.env.example` |
 
-Every script prints its options with `--help`. They are TypeScript run with `tsx`; the same commands work in PowerShell and zsh.
+One neutral example per tool:
+
+```
+npx tsx ops/tools/logs.ts --file incident/INC-20261005-01/logs/combined.log --count
+npx tsx ops/tools/logs.ts --file incident/INC-20261005-01/logs/combined.log --service gateway --status 5xx --tail 5 --line-numbers
+npx tsx ops/tools/verify.ts --path incident/INC-20261007-01/deploy
+npx tsx ops/tools/incident.ts --heap 96
+npx tsx ops/tools/load.ts --duration 60
+npx tsx rag/cli.ts "What does OPS-040 require after an S2 incident?" --k 3
+```
+
+Environment variables of the app (`PORT`, `DATA_FILE`, `AUDIT_FILE`, `LOG_FILE`, `LOG_LEVEL`, `METRICS_INTERVAL_MS`, REF-030) are set per shell when you need them for `npm run dev`:
+
+```
+$env:LOG_LEVEL = "info"; npm run dev        # PowerShell
+LOG_LEVEL=info npm run dev                  # zsh
+```
+
+With the supervisor you do not need them: `--port`, `--data-file`, `--log-file` and `--heap` are flags.
 
 ## Folders
 
 | Folder | Content |
 |---|---|
-| `server/`, `shared/`, `src/` | The app. Release 1.2.0 added `server/installmentCache.ts`, `server/auditLog.ts`, `server/memoryStore.ts`, `server/metrics.ts`, `server/persistence.ts` |
+| `server/`, `shared/`, `src/` | The app. Release 1.2.0 added the installment calculator, the decision audit trail, process metrics and an in-memory fallback store (changelog 1.2.0) |
 | `docker/`, `compose.yaml`, `.env.example` | The container pilot as deployed to branch CZ-PRG-01 |
-| `ops/tools/` | The scripts above; `ops/legacy/deploy.sh` is the old bash deployment (read it, never run it); `ops/k8s/` a Kubernetes sketch to explain, never apply |
+| `ops/tools/` | The tools above; `ops/legacy/deploy.sh` is the old bash deployment (read it, never run it); `ops/k8s/` is a Kubernetes sketch to explain, never apply |
 | `incident/INC-20261005-01/` | Monday 2026-10-05, "Loan API restart loop", S2: `logs/combined.log` (about 80,000 lines, UTC), `logs/metrics.csv`, `comms/` (chat export, e-mails, ticket; CEST) |
-| `incident/INC-20261007-01/` | Wednesday 2026-10-07, "Lost applications after redeploy", S2: same structure plus `deploy/` with the files that caused it |
+| `incident/INC-20261007-01/` | Wednesday 2026-10-07, "Lost applications after redeploy", S2: same structure plus `deploy/` with the files that were deployed that day |
 | `templates/` | Postmortem (OPS-040) and executive summary templates |
 | `.github/agents/` | `pir-writer` and `ops-reviewer` custom agents; `.github/ops-review-checklist.md`; `.github/workflows/generate-pir.yml` |
-| `docs/handbook/` | The operations handbook: OPS-040 incidents, OPS-050 releases, OPS-060 logging, POL-070 data handling, RB-00x runbooks, REF-0x0 reference |
+| `docs/handbook/` | The operations handbook: OPS-040 incidents, OPS-050 releases, OPS-060 logging, POL-070 data handling, RB-00x runbooks, REF-0x0 reference. It describes Linux branch workstations, so its own shell commands are not PowerShell-safe; use the tools above instead |
 
-## Incident ids and the story in one line each
+## The two incidents
 
-- **INC-20261005-01** (S2): 1.2.0 goes live at 08:30 CEST; from 09:12 the API is killed by its memory limit about every 8 minutes and restarted by a watchdog; rollback to 1.1.0 at 10:20; resolved 11:30. Red herrings: gateway `upstream timed out` lines (present before the release) and a "data file, KI-001 again?" theory.
-- **INC-20261007-01** (S2): a hardened container configuration runs as a non-root user on a root-owned data folder; the API starts with `persistence disabled`, keeps the day's applications in memory, decisions fail with 500 `EACCES`, and a 15:42 restart loses three applications.
+- **INC-20261005-01** (S2): 1.2.0 goes live on the pilot at 08:30 CEST. From 09:12 officers see "Request failed with status 502" in bursts; the Operations Lead declares at 09:19; the release is rolled back to 1.1.0 at 10:20; resolved 11:30. Your job: find out from the evidence what happened and why.
+- **INC-20261007-01** (S2): a reworked container configuration is deployed at 13:00 CEST. During the afternoon two approvals fail with a 500; at 15:42 the container is restarted for a configuration change and the Total Applications tile drops from 9 to 6; declared 15:53, resolved 17:00. The files that were deployed are in `deploy/`.
 
-Logs are UTC (`Z`), chat, e-mails and tickets are CEST (UTC+2). The mismatch is intentional.
+Logs are UTC (`Z`), chat, e-mails and tickets are CEST (UTC+2). The mismatch is intentional. Every number you put in a postmortem must come from a source you can name.
 
-## What you will do
+## Working rules
 
-1. Reproduce incident 1 locally (`ops:incident` + `ops:load`), find the leaking cache, fix it (eviction, TTL, key without `requestedAt` and `applicantName`, no request body in the log) and prove it with the load test and the handbook (OPS-060 catalog, POL-070).
-2. Analyse the recorded logs with `npm run logs` and write `incident/INC-20261005-01/analysis.md` with line numbers as evidence; then let `pir-writer` turn it into a postmortem and an executive summary.
-3. Review and fix the container files until `npm run ops:verify` passes; read `ops/legacy/deploy.sh` and `ops/k8s/loan-api.yaml` with Copilot and list what is wrong; find the leaked configuration in git history (`git log -p -- .env`).
-4. Do the same for incident 2, including the `deploy/` snapshot, and file Known Issue entries KI-005 and KI-006 as OPS-040 requires.
-5. Extend `.github/copilot-instructions.md` with an "Operations work" section so Copilot follows the handbook rules by itself.
-
-The handbook rule to remember: **a change in code, API or logging must update the matching handbook document** in the same pull request.
+- Never paste `combined.log` into a chat; it is too large and it contains personal data. Use the log reader with `--redact` when quoting.
+- A change in code, API or logging must update the matching handbook document (OPS-050).
+- Every S1/S2 incident ends with a Known Issue entry (`docs/handbook/known-issues/README.md`) and a postmortem (`templates/`).
