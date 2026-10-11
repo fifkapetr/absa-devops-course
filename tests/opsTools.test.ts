@@ -1,4 +1,8 @@
 // @vitest-environment node
+import { spawnSync } from 'node:child_process'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { keyValues, parseDockerfile } from '../ops/tools/lib/dockerfile'
 import { parseLine, redact } from '../ops/tools/lib/logFormats'
@@ -81,5 +85,37 @@ describe('ops tools: seeded random', () => {
     const a = createRng(7)
     const b = createRng(7)
     expect([a.int(1, 100), a.next(), hex(a, 8)]).toEqual([b.int(1, 100), b.next(), hex(b, 8)])
+  })
+})
+
+describe('ops tools: CRLF checkouts give the same output', () => {
+  const run = (script: string, args: string[]) =>
+    spawnSync(process.execPath, ['--import', 'tsx', script, ...args], { encoding: 'utf8', cwd: path.resolve('.') }).stdout
+
+  it('npm run logs prints the same lines and line numbers for LF and CRLF files', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'tredgate-logs-'))
+    const sample = (await readFile('incident/INC-20261007-01/logs/combined.log', 'utf8')).split('\n').slice(0, 1200).join('\n') + '\n'
+    await writeFile(path.join(dir, 'lf.log'), sample)
+    await writeFile(path.join(dir, 'crlf.log'), sample.replace(/\n/g, '\r\n'))
+    const args = ['--msg', 'persistence disabled', '--grep', 'EACCES', '--grep', 'oom', '--line-numbers', '--tail', '3']
+    const lf = run('ops/tools/logs.ts', ['--file', path.join(dir, 'lf.log'), ...args])
+    const crlf = run('ops/tools/logs.ts', ['--file', path.join(dir, 'crlf.log'), ...args])
+    expect(lf).toContain('1061: loan-api')
+    expect(crlf).toBe(lf)
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('npm run ops:verify reports the same findings for LF and CRLF files', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'tredgate-verify-'))
+    for (const name of ['api.Dockerfile', 'docs.Dockerfile', 'compose.yaml', '.dockerignore']) {
+      const text = await readFile(path.join('incident/INC-20261007-01/deploy', name), 'utf8')
+      await writeFile(path.join(dir, name), text.replace(/\n/g, '\r\n'))
+    }
+    const strip = (out: string) => out.split('\n').filter(line => /^(PASS|WARN|FAIL|summary)/.test(line)).map(line => line.replace(/\(.*?(deploy|tredgate-verify-[^/]+)\//, '(')).join('\n')
+    const original = strip(run('ops/tools/verify.ts', ['--path', 'incident/INC-20261007-01/deploy']))
+    const crlf = strip(run('ops/tools/verify.ts', ['--path', dir]))
+    expect(original).toContain('FAIL OPS-011')
+    expect(crlf).toBe(original)
+    await rm(dir, { recursive: true, force: true })
   })
 })

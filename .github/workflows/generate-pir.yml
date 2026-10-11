@@ -58,12 +58,12 @@ jobs:
       - name: Write the postmortem
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        # The agent may write files and may run only the handbook search. Non-interactive runs deny
+        # The agent may write files and may run only the handbook search (direct tsx call or npm alias). Non-interactive runs deny
         # everything that is not pre-approved; --no-ask-user stops it from asking questions.
         run: |
           copilot --agent pir-writer \
             -p "Write the postmortem for incident/$INCIDENT: read comms/*, ticket.json, logs/metrics.csv and analysis.md if present, cite every fact, and write incident/$INCIDENT/postmortem.md and incident/$INCIDENT/exec-summary.md." \
-            --allow-tool='write, shell(npm run rag:*)' \
+            --allow-tool='write, shell(npx tsx rag/cli.ts:*), shell(npm run rag:*)' \
             --no-ask-user \
             -s \
             --log-level=warning

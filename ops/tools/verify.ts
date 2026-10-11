@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { parseCli } from './lib/cli'
+import { displayPath, parseCli, resolveInput } from './lib/cli'
 import { keyValues, parseDockerfile, type Stage } from './lib/dockerfile'
 import { envEntries, mapping, parseYaml, scalar, sequence, type YamlNode } from './lib/yaml'
 
@@ -29,12 +29,12 @@ interface Finding {
   line?: number
 }
 
-const root = path.resolve(values.path)
+const root = resolveInput(values.path)
 const SECRET_NAME = /TOKEN|SECRET|PASSWORD|KEY/i
 const findings: Finding[] = []
 
 function report(verdict: Verdict, rule: string, text: string, file: string, line?: number) {
-  findings.push({ verdict, rule, text, file: path.relative(process.cwd(), file) || '.', line })
+  findings.push({ verdict, rule, text, file: displayPath(file) || '.', line })
 }
 
 // ---------------------------------------------------------------- discover files
@@ -144,7 +144,7 @@ for (const file of dockerfiles) {
   const candidates = [root, ...contexts].map(dir => path.join(dir, '.dockerignore'))
   const ignoreFile = candidates.find(file => existsSync(file))
   if (!ignoreFile) {
-    report('FAIL', 'OPS-004', `.dockerignore missing (looked in ${[...new Set(candidates.map(c => path.relative(process.cwd(), path.dirname(c)) || '.'))].join(', ')}); the build context includes .env, .git and node_modules`, candidates[0]!)
+    report('FAIL', 'OPS-004', `.dockerignore missing (looked in ${[...new Set(candidates.map(c => displayPath(path.dirname(c)) || '.'))].join(', ')}); the build context includes .env, .git and node_modules`, candidates[0]!)
   } else {
     const entries = readFileSync(ignoreFile, 'utf8').split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith('#'))
     const missing = ['.env', '.git', 'node_modules'].filter(required => !entries.some(entry => entry === required || entry === `${required}/` || entry === `**/${required}` || (required === '.env' && /^\.env\*?$/.test(entry))))
@@ -257,7 +257,7 @@ for (const [name, service] of Object.entries(services)) {
 // ---------------------------------------------------------------- output
 const order: Record<Verdict, number> = { FAIL: 0, WARN: 1, PASS: 2 }
 findings.sort((a, b) => a.rule.localeCompare(b.rule) || order[a.verdict] - order[b.verdict] || a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0))
-console.log(`ops:verify ${path.relative(process.cwd(), root) || '.'}  (${dockerfiles.length} Dockerfile(s), ${composeFile ? path.basename(composeFile) : 'no compose file'})\n`)
+console.log(`ops:verify ${displayPath(root) || '.'}  (${dockerfiles.length} Dockerfile(s), ${composeFile ? path.basename(composeFile) : 'no compose file'})\n`)
 for (const finding of findings) {
   console.log(`${finding.verdict} ${finding.rule} ${finding.text} (${finding.file}${finding.line ? `:${finding.line}` : ''})`)
 }

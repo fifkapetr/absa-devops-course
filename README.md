@@ -76,13 +76,15 @@ npm run build
 
 Cross-platform TypeScript scripts under `ops/tools/` (every one supports `--help`):
 
-```bash
-npm run setup          # .env from .env.example
-npm run ops:incident   # API under a restarting supervisor with a 96 MB heap + handbook search
-npm run ops:load       # traffic generator; exit 1 above 1 % errors or 500 ms p95
-npm run ops:verify     # OPS-001..011 checks of docker/, .dockerignore, compose.yaml
-npm run logs -- --file logs/app.log --level warn --count
 ```
+npm run setup                                   # .env from .env.example
+npm run ops:incident                            # API under a restarting supervisor with a 96 MB heap + handbook search
+npm run ops:load                                # traffic generator; exit 1 above 1 % errors, 500 ms p95 or an API restart
+npm run ops:verify                              # OPS-001..011 checks of docker/, .dockerignore, compose.yaml
+npx tsx ops/tools/logs.ts --file logs/app.log --level warn --count
+```
+
+Options are passed either directly (`npx tsx ops/tools/logs.ts --file ...`, works identically in PowerShell and zsh) or through npm with the `--` separator (`npm run logs -- --file ...`).
 
 ### Reset the data
 
@@ -122,12 +124,17 @@ All endpoints are under `/api` and use JSON.
 
 Errors are returned as `{ "error": "message" }`. Unexpected errors return 500 with a generic message and the full stack trace goes to the log.
 
-Example:
+Example (macOS/Linux `curl`; on Windows use `curl.exe`, because `curl` alone is a PowerShell alias):
 
 ```bash
 curl -X POST http://localhost:3000/api/loans \
   -H "Content-Type: application/json" \
   -d '{"applicantName":"Alice Smith","amount":25000,"termMonths":12,"interestRate":0.05}'
+```
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:3000/api/loans -ContentType "application/json" `
+  -Body '{"applicantName":"Alice Smith","amount":25000,"termMonths":12,"interestRate":0.05}'
 ```
 
 ## Data and Logs

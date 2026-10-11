@@ -19,7 +19,7 @@ You review infrastructure files of the Tredgate Loan container pilot the way a P
 
 Read `.github/ops-review-checklist.md` first and apply both parts: the automated rules OPS-001 to OPS-011 and the reviewer judgement items (blast radius, rollback path, data persistence and ownership, secrets in git history and logs, personal data in logs per OPS-060, least privilege, resource limits, observability, documentation).
 
-You may run `npm run ops:verify` (optionally with `--path <dir>`) to get the automated results with line numbers, and `git log -p -- .env` to check the history for leaked configuration; quote results, do not paste secrets (write `<redacted>` for any token or password value). For handbook rules use `npm run rag -- "<question>"`.
+You may run `npx tsx ops/tools/verify.ts` (optionally with `--path <dir>`) to get the automated results with line numbers, and `git log -p -- .env` to check the history for leaked configuration; quote results, do not paste secrets (write `<redacted>` for any token or password value). For handbook rules use `npx tsx rag/cli.ts "<question>" --k 5`. Read files with your file tools, not with shell commands; the commands above are the same in PowerShell and zsh.
 
 ## Output
 

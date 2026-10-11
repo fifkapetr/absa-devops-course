@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
-import { parseCli } from './lib/cli'
+import { parseCli, resolveInput } from './lib/cli'
 
 /**
  * npm run ops:incident
@@ -17,12 +17,18 @@ const { values } = parseCli(
   {
     heap: { type: 'string', default: '96', description: 'V8 old-space limit for loan-api in MB (--max-old-space-size)' },
     'metrics-interval': { type: 'string', default: '5000', description: 'METRICS_INTERVAL_MS for loan-api' },
-    'no-docs': { type: 'boolean', default: false, description: 'Do not start docs-search on port 3001' }
+    'no-docs': { type: 'boolean', default: false, description: 'Do not start docs-search on port 3001' },
+    port: { type: 'string', description: 'PORT of loan-api (default 3000, or the PORT environment variable)' },
+    'data-file': { type: 'string', description: 'DATA_FILE of loan-api (default server/data/loans.json)' },
+    'log-file': { type: 'string', description: 'LOG_FILE of loan-api and the supervisor (default logs/app.log)' }
   }
 )
 
 const root = path.resolve(import.meta.dirname, '..', '..')
-const logFile = process.env.LOG_FILE ?? path.join(root, 'logs', 'app.log')
+const logFile = values['log-file'] ? resolveInput(values['log-file']) : (process.env.LOG_FILE ?? path.join(root, 'logs', 'app.log'))
+const childEnv: Record<string, string> = {}
+if (values.port) childEnv.PORT = values.port
+if (values['data-file']) childEnv.DATA_FILE = resolveInput(values['data-file'])
 mkdirSync(path.dirname(logFile), { recursive: true })
 
 let restarts = 0
@@ -44,7 +50,7 @@ function startApi() {
   api = spawn(process.execPath, [`--max-old-space-size=${values.heap}`, '--import', 'tsx', 'server/index.ts'], {
     cwd: root,
     stdio: 'inherit',
-    env: { ...process.env, METRICS_INTERVAL_MS: values['metrics-interval'], LOG_FILE: logFile }
+    env: { ...process.env, ...childEnv, METRICS_INTERVAL_MS: values['metrics-interval'], LOG_FILE: logFile }
   })
   api.on('exit', (code, signal) => {
     if (stopping) return

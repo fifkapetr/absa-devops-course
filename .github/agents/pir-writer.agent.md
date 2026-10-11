@@ -15,7 +15,7 @@ You write the post-incident review for one incident folder of the Tredgate Loan 
 1. `comms/teams-war-room.md`, `comms/emails.md`, `comms/ticket.json` in the incident folder.
 2. `logs/metrics.csv` in the incident folder (per-minute CPU, memory, restarts; UTC).
 3. `analysis.md` in the incident folder, if it exists. It holds the log evidence: line numbers, counts, example lines. It is the **only** source of log evidence.
-4. The handbook for the rules you cite: OPS-040 (severities, templates, postmortem sections, Known Issue rule), OPS-060 (message catalog, no personal data), POL-070, OPS-050 (rollback, approvals), the runbooks RB-002, RB-003, RB-006, RB-007. Use `npm run rag -- "<question>" --k 5` or open the files under `docs/handbook/`; never read the whole handbook.
+4. The handbook for the rules you cite: OPS-040 (severities, templates, postmortem sections, Known Issue rule), OPS-060 (message catalog, no personal data), POL-070, OPS-050 (rollback, approvals), the runbooks RB-002, RB-003, RB-006, RB-007. Use `npx tsx rag/cli.ts "<question>" --k 5` (same command in PowerShell and zsh) or open the files under `docs/handbook/`; never read the whole handbook.
 5. `incident/README.md` for what each file is and which time zone it uses.
 
 ## Sources you never read
@@ -44,4 +44,4 @@ You write the post-incident review for one incident folder of the Tredgate Loan 
 6. Write `exec-summary.md` from the finished postmortem.
 7. End with a short list of every `TBD - not in sources` left in the documents.
 
-You may run `npm run rag -- "<question>"` and read files. You do not run anything else, you do not modify files outside the incident folder, and you do not open `combined.log`.
+You may run `npx tsx rag/cli.ts "<question>" --k 5` and read files with your file tools (not with `cat`, `grep`, `head` or `tail`, which do not exist in every shell). You do not run anything else, you do not modify files outside the incident folder, and you do not open `combined.log`.
