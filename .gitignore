@@ -35,3 +35,8 @@ rag/index.json
 legacy/data/*.out.json
 .playwright-mcp/
 reports/
+# Local configuration of the container pilot (copy of .env.example, never committed)
+.env
+
+# Bind-mounted data folder of the container pilot
+data/
