@@ -1,0 +1,286 @@
+name: Evaluate pull request (AI)
+
+# Runs the pr-evaluator agent on every pull request and posts one scored comment.
+# The evaluation is advisory: it never blocks a merge, a human still approves.
+#
+# Authentication: the built-in GITHUB_TOKEN with the `copilot-requests: write` permission.
+# This requires the organization policy "Allow use of Copilot CLI billed to the organization".
+# To bill a user instead, create a fine-grained personal access token with the
+# "Copilot Requests" permission, store it as the repository secret COPILOT_PAT and replace
+# the COPILOT_GITHUB_TOKEN env in the "Run pr-evaluator agent" step with:
+#   COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+# (the copilot-requests permission is then not needed for the evaluate job).
+#
+# Model: set the repository variable PR_EVAL_MODEL to override the default.
+# To change it once without editing this file, pass the model input in workflow_dispatch.
+#
+# Why not pull_request_target: that trigger runs the workflow from the base branch
+# with write permissions, which would execute untrusted code from a fork with elevated
+# access to secrets. pull_request runs from the head commit with read-only permissions.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to evaluate (re-run on demand)
+        required: true
+        type: number
+      model:
+        description: Model name; overrides the PR_EVAL_MODEL repository variable
+        required: false
+        type: string
+
+concurrency:
+  group: pr-evaluator-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  checks:
+    name: Checks and context
+    runs-on: ubuntu-latest
+    # Skip drafts on pull_request events; workflow_dispatch always runs
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.pull_request.draft }}
+
+    outputs:
+      pr_number: ${{ steps.pr-info.outputs.pr_number }}
+      head_sha: ${{ steps.pr-info.outputs.head_sha }}
+      base_sha: ${{ steps.pr-info.outputs.base_sha }}
+
+    steps:
+      - name: Resolve PR info
+        id: pr-info
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PR_NUM="${{ inputs.pr }}"
+            DATA=$(gh api "repos/$REPO/pulls/$PR_NUM")
+            HEAD=$(echo "$DATA" | jq -r .head.sha)
+            BASE=$(echo "$DATA" | jq -r .base.sha)
+          else
+            PR_NUM="${{ github.event.pull_request.number }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+            BASE="${{ github.event.pull_request.base.sha }}"
+          fi
+          echo "pr_number=$PR_NUM" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr-info.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Fetch base ref
+        run: git fetch origin ${{ steps.pr-info.outputs.base_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create results directory
+        run: mkdir -p .pr-eval/results
+
+      - name: Run linter
+        run: |
+          if npm run lint > .pr-eval/results/lint-out.txt 2>&1; then
+            echo 0 > .pr-eval/results/lint-code.txt
+          else
+            echo 1 > .pr-eval/results/lint-code.txt
+          fi
+
+      - name: Run tests
+        run: |
+          if npm run test > .pr-eval/results/test-out.txt 2>&1; then
+            echo 0 > .pr-eval/results/test-code.txt
+          else
+            echo 1 > .pr-eval/results/test-code.txt
+          fi
+
+      - name: Build
+        run: |
+          if npm run build > .pr-eval/results/build-out.txt 2>&1; then
+            echo 0 > .pr-eval/results/build-code.txt
+          else
+            echo 1 > .pr-eval/results/build-code.txt
+          fi
+
+      - name: Run verify.ts
+        run: |
+          if npm run ops:verify > .pr-eval/results/verify-out.txt 2>&1; then
+            echo 0 > .pr-eval/results/verify-code.txt
+          else
+            echo 1 > .pr-eval/results/verify-code.txt
+          fi
+
+      - name: Fetch PR description
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          PR_NUM="${{ steps.pr-info.outputs.pr_number }}"
+          gh api "repos/$REPO/pulls/$PR_NUM" --jq .body > .pr-eval/pr-body.txt
+
+      - name: Fetch linked issue bodies
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Extract Closes/Fixes/Resolves #N from the PR body
+          ISSUES=$(grep -oP '(?i)(?:closes|fixes|resolves)\s+#\K\d+' .pr-eval/pr-body.txt || true)
+          for NUM in $ISSUES; do
+            gh api "repos/$REPO/issues/$NUM" --jq .body > ".pr-eval/issue-${NUM}.txt" || true
+          done
+
+      - name: Build evaluation context
+        run: |
+          # Collect --issue-body flags for each fetched issue file
+          ISSUE_FLAGS=""
+          for f in .pr-eval/issue-*.txt; do
+            [ -f "$f" ] && ISSUE_FLAGS="$ISSUE_FLAGS --issue-body $f"
+          done
+          npx tsx ops/tools/pr-context.ts \
+            --base "${{ steps.pr-info.outputs.base_sha }}" \
+            --head "${{ steps.pr-info.outputs.head_sha }}" \
+            --pr-body .pr-eval/pr-body.txt \
+            --results .pr-eval/results \
+            $ISSUE_FLAGS
+
+      - name: Upload evaluation context
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-eval-${{ steps.pr-info.outputs.pr_number }}
+          path: .pr-eval/
+          if-no-files-found: error
+
+  evaluate:
+    name: AI evaluation
+    runs-on: ubuntu-latest
+    needs: checks
+    permissions:
+      contents: read
+      copilot-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.checks.outputs.head_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Install dependencies (handbook search for the agent)
+        run: npm ci
+
+      - name: Download evaluation context
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-eval-${{ needs.checks.outputs.pr_number }}
+          path: .pr-eval/
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Run pr-evaluator agent
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # Use model from: (1) workflow_dispatch input, (2) repo variable, (3) default.
+          # gpt-4o-mini is chosen as the low-cost default: it handles structured JSON output
+          # well and is significantly cheaper than full GPT-4o while sufficient for
+          # evidence-based evaluation of a diff and a checklist.
+          MODEL: ${{ inputs.model || vars.PR_EVAL_MODEL || 'gpt-4o-mini' }}
+        run: |
+          copilot --agent pr-evaluator \
+            -p "Evaluate .pr-eval/: read criteria.md, checks.md, diff.md and untrusted.md, then write .pr-eval/result.json with one verdict and evidence per criterion." \
+            --model "$MODEL" \
+            --allow-tool='write, shell(npx tsx rag/cli.ts:*), shell(npm run rag:*)' \
+            --no-ask-user \
+            -s \
+            --log-level=warning
+
+      - name: Compute score and build comment
+        run: npx tsx ops/tools/pr-score.ts
+
+      - name: Publish to job summary
+        run: cat .pr-eval/comment.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload final evaluation
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-eval-result-${{ needs.checks.outputs.pr_number }}
+          path: .pr-eval/
+          if-no-files-found: warn
+
+  comment:
+    name: Post comment
+    runs-on: ubuntu-latest
+    needs: [checks, evaluate]
+    # Run even if evaluate failed so we can post a "could not run" notice
+    if: always() && needs.checks.result == 'success'
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Download comment
+        id: download
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-eval-result-${{ needs.checks.outputs.pr_number }}
+          path: .pr-eval/
+        continue-on-error: true
+
+      - name: Create or update PR comment
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.checks.outputs.pr_number }}
+          EVALUATE_OUTCOME: ${{ needs.evaluate.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs')
+            const prNumber = parseInt(process.env.PR_NUMBER, 10)
+            const marker = '<!-- pr-evaluator -->'
+
+            let body
+            if (process.env.EVALUATE_OUTCOME === 'success' && fs.existsSync('.pr-eval/comment.md')) {
+              body = fs.readFileSync('.pr-eval/comment.md', 'utf8')
+            } else {
+              body = `${marker}\n\n` +
+                `**PR Evaluation could not run** — the AI evaluation step failed or produced no output.\n\n` +
+                `[View the workflow run](${process.env.RUN_URL}) for details.\n\n` +
+                `*This evaluation is advisory. It does not block the pull request.*`
+            }
+
+            const { owner, repo } = context.repo
+            const comments = await github.rest.issues.listComments({
+              owner, repo, issue_number: prNumber, per_page: 100
+            })
+            const existing = comments.data.find(c => c.body && c.body.startsWith(marker))
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body
+              })
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: prNumber, body
+              })
+            }

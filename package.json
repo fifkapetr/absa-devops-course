@@ -18,6 +18,8 @@
     "ops:incident": "tsx ops/tools/incident.ts",
     "ops:load": "tsx ops/tools/load.ts",
     "ops:verify": "tsx ops/tools/verify.ts",
+    "ops:pr-context": "tsx ops/tools/pr-context.ts",
+    "ops:pr-score": "tsx ops/tools/pr-score.ts",
     "logs": "tsx ops/tools/logs.ts",
     "incidents:generate": "tsx ops/tools/generate-incidents.ts",
     "rag": "tsx rag/cli.ts",
