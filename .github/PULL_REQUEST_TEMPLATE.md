@@ -2,6 +2,17 @@
 
 _Provide a brief description of what this PR does and why._
 
+## Linked issue
+
+_Closes #..._
+
+## Acceptance criteria
+
+_Testable statements the pr-evaluator agent checks this pull request against, for example "After a container restart, applications created before it are still listed"._
+
+- [ ] 
+- [ ] 
+
 ## Changes
 
 _List the key changes made in this PR:_

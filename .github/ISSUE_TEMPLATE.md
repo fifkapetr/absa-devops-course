@@ -18,6 +18,13 @@ _Describe the problem or the feature request clearly. Include any error messages
 
 _If you have a suggestion for how to fix or implement this, describe it here. Otherwise, leave this section blank or add "Open to suggestions"._
 
+## Acceptance criteria
+
+_Testable statements that tell when this issue is done. Pull requests that close this issue are evaluated against them._
+
+- [ ] 
+- [ ] 
+
 ## Additional Information
 
 - **Browser/Environment**: 

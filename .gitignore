@@ -44,3 +44,7 @@ data/
 # Recorded incident evidence is committed although logs/ and *.log are ignored elsewhere
 !incident/**/logs/
 !incident/**/*.log
+
+# pr-evaluator output (local runs)
+.pr-eval/
+pr-evaluation.md

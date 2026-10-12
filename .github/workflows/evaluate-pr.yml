@@ -1,0 +1,84 @@
+name: Evaluate pull request (AI)
+
+# The pr-evaluator custom agent (.github/agents/pr-evaluator.agent.md) checks every pull request
+# against its acceptance criteria and posts one scored comment. The comment is advisory: it never
+# blocks a merge, a person approves.
+#
+# The workflow collects the pull request data and runs the checks itself. The agent only reads
+# those files and writes pr-evaluation.md (--allow-tool=write): it cannot run commands, post, push
+# or edit code. The comment is posted by the last step of the workflow, not by the agent.
+#
+# Model: set the repository variable PR_EVAL_MODEL to change it without editing this file.
+# Authentication: see generate-pir.yml (built-in token, or a COPILOT_PAT secret via COPILOT_GITHUB_TOKEN).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: write
+  copilot-requests: write
+
+concurrency:
+  group: evaluate-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  evaluate:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    env:
+      PR: ${{ github.event.pull_request.number }}
+      GH_TOKEN: ${{ github.token }}
+      MODEL: ${{ vars.PR_EVAL_MODEL || 'claude-haiku-4.5' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Collect the pull request and run the checks
+        run: |
+          set +e
+          mkdir -p .pr-eval
+          gh pr view "$PR" --json title,body,files,baseRefName,closingIssuesReferences > .pr-eval/pr.json
+          gh pr diff "$PR" > .pr-eval/diff.patch
+          for n in $(jq -r '.closingIssuesReferences[].number' .pr-eval/pr.json); do
+            gh issue view "$n" --json number,title,body
+          done | jq -s '.' > .pr-eval/issues.json
+          check() {
+            echo "## $*"; echo; echo '```'
+            "$@" > .pr-eval/out.txt 2>&1; code=$?
+            tail -n 40 .pr-eval/out.txt; echo '```'; echo "exit code: $code"; echo
+          }
+          { check npm run lint; check npm run test; check npx tsx ops/tools/verify.ts; } > .pr-eval/checks.md
+          rm -f .pr-eval/out.txt
+
+      - run: npm install -g @github/copilot
+
+      - name: Evaluate the pull request
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          copilot --agent pr-evaluator \
+            -p "Evaluate pull request #$PR from the files in .pr-eval/ and write pr-evaluation.md." \
+            --model "$MODEL" \
+            --allow-tool='write' \
+            --no-ask-user \
+            -s
+
+      - name: Post or update the comment
+        run: |
+          if [ ! -s pr-evaluation.md ]; then
+            echo "The agent did not write pr-evaluation.md." > pr-evaluation.md
+          fi
+          cat pr-evaluation.md >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment "$PR" --body-file pr-evaluation.md --edit-last || gh pr comment "$PR" --body-file pr-evaluation.md
