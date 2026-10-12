@@ -72,7 +72,7 @@ With the supervisor you do not need them: `--port`, `--data-file`, `--log-file` 
 | `incident/INC-20261005-01/` | Monday 2026-10-05, "Loan API restart loop", S2: `logs/combined.log` (about 80,000 lines, UTC), `logs/metrics.csv`, `comms/` (chat export, e-mails, ticket; CEST) |
 | `incident/INC-20261007-01/` | Wednesday 2026-10-07, "Lost applications after redeploy", S2: same structure plus `deploy/` with the files that were deployed that day |
 | `templates/` | Postmortem (OPS-040) and executive summary templates |
-| `.github/agents/` | `pir-writer`, `ops-reviewer` and `pr-evaluator` custom agents; `.github/ops-review-checklist.md`; `.github/evaluation/checklist.md`; `.github/workflows/generate-pir.yml`, `.github/workflows/evaluate-pr.yml` |
+| `.github/agents/` | `pir-writer` and `ops-reviewer` custom agents; `.github/ops-review-checklist.md`; `.github/workflows/generate-pir.yml` |
 | `docs/handbook/` | The operations handbook: OPS-040 incidents, OPS-050 releases, OPS-060 logging, POL-070 data handling, RB-00x runbooks, REF-0x0 reference. It describes Linux branch workstations, so its own shell commands are not PowerShell-safe; use the tools above instead |
 
 ## The two incidents
@@ -87,38 +87,3 @@ Logs are UTC (`Z`), chat, e-mails and tickets are CEST (UTC+2). The mismatch is 
 - Never paste `combined.log` into a chat; it is too large and it contains personal data. Use the log reader with `--redact` when quoting.
 - A change in code, API or logging must update the matching handbook document (OPS-050).
 - Every S1/S2 incident ends with a Known Issue entry (`docs/handbook/known-issues/README.md`) and a postmortem (`templates/`).
-
-## PR evaluator (bonus chapter)
-
-The `pr-evaluator` agent checks a pull request against explicit acceptance criteria and posts one scored comment. It is advisory: it never blocks a merge; a human still approves.
-
-**Where criteria come from (in order):**
-1. The `## Acceptance criteria` section of the PR description.
-2. The `## Acceptance criteria` section of issues linked with `Closes #N`, `Fixes #N` or `Resolves #N`.
-3. Applicable items from `.github/evaluation/checklist.md` (C-01 to C-09).
-
-If the PR description has no `## Acceptance criteria` section, the PR-specific part is `NOT EVALUABLE`. The agent never invents criteria.
-
-**Workflow:** `.github/workflows/evaluate-pr.yml` ("Evaluate pull request (AI)"). It runs on every non-draft pull request. Re-run on demand with `workflow_dispatch` and the PR number. The model defaults to `gpt-4o-mini`; set the repository variable `PR_EVAL_MODEL` to override without editing the workflow.
-
-**Local run (both shells):**
-
-```
-# 1. Build the context folder
-npx tsx ops/tools/pr-context.ts --base origin/course/devops-autopilot --criteria my-criteria.md
-
-# 2a. Run the agent (Copilot CLI)
-copilot --agent pr-evaluator -p "Evaluate .pr-eval" --allow-tool "write, shell(npx tsx rag/cli.ts:*)" --no-ask-user -s
-
-# 2b. Or: open VS Code, select the pr-evaluator agent, type: Evaluate .pr-eval
-
-# 3. Compute the score and open the comment
-npx tsx ops/tools/pr-score.ts
-```
-
-The comment file is `.pr-eval/comment.md`. Open it in VS Code to read the result.
-
-| Tool | Direct form | What it does |
-|---|---|---|
-| Context builder | `npx tsx ops/tools/pr-context.ts [options]` | Builds `.pr-eval/`: criteria, diff, check results, untrusted text. `--help` for options |
-| Score calculator | `npx tsx ops/tools/pr-score.ts` | Reads `.pr-eval/result.json`, validates it, writes `.pr-eval/comment.md` |

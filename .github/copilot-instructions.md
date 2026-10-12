@@ -65,10 +65,8 @@ Tredgate Loan is a teaching app, not a product. Everything runs locally with Nod
 - `incident/` - Recorded incidents (logs, chat export, e-mails, ticket) used for postmortem exercises
 - `templates/` - Postmortem and executive summary templates (OPS-040)
 - `.github/skills/loan-handbook-search/` - Skill describing how to use the search API
-- `.github/agents/` - Custom agents: `pir-writer` (postmortem from an incident folder), `ops-reviewer` (read-only infrastructure review against `.github/ops-review-checklist.md`), `pr-evaluator` (scores a pull request against explicit acceptance criteria and writes `.pr-eval/result.json`)
-- `.github/evaluation/checklist.md` - Repository-wide evaluation criteria (C-01..C-09) used by `pr-evaluator`
+- `.github/agents/` - Custom agents: `pir-writer` (postmortem from an incident folder), `ops-reviewer` (read-only infrastructure review against `.github/ops-review-checklist.md`)
 - `.github/workflows/generate-pir.yml` - Manual workflow that runs `pir-writer` in Copilot CLI and uploads the postmortem as an artifact
-- `.github/workflows/evaluate-pr.yml` - Runs `pr-evaluator` on every pull request and posts one scored advisory comment
 - `logs/` - Runtime logs (generated, not committed)
 
 ## Commands
@@ -83,7 +81,5 @@ Tredgate Loan is a teaching app, not a product. Everything runs locally with Nod
 - `npm run ops:incident` - Run the API under a restarting supervisor with a small heap plus the handbook search (reproduces the pilot's restart loop)
 - `npm run ops:load` - Traffic generator against the API and the handbook search (`--duration`, `--rps`); exit 1 above 1 % errors or 500 ms p95
 - `npm run ops:verify` - Static OPS-001..011 checks of `docker/`, `.dockerignore`, `compose.yaml` (`--path <dir>` for another folder)
-- `npm run ops:pr-context` - Build `.pr-eval/` for the PR evaluator (`--base`, `--head`, `--pr-body`, `--issue-body`, `--criteria`, `--results`, `--max-diff-lines`)
-- `npm run ops:pr-score` - Validate `.pr-eval/result.json`, compute the score and write `.pr-eval/comment.md`
 - `npm run logs` - Cross-platform log reader (`--file`, `--service`, `--level`, `--from`, `--to`, `--grep`, `--msg`, `--redact`, `--count`, `--head`)
 - `npm run rag -- "question"` - Find the handbook sections relevant to a question (`npm run rag:index` rebuilds the index, `npm run rag:serve` runs the API alone, `npm run rag:mcp` the MCP server)

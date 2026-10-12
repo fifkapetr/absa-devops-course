@@ -28,13 +28,17 @@ Workstation configuration changes (a non-default `PORT`, `DATA_FILE`, `LOG_FILE`
 
 Branch names: `feature/<short-description>`, `fix/<short-description>` (reference the Known Issue where one exists, for example `fix/ki-003-amount-type-validation`), `docs/<short-description>` for handbook-only changes, and `release/<version>`.
 
-Every pull request uses the template `.github/PULL_REQUEST_TEMPLATE.md` with five parts: Summary, Linked issue (`Closes #N` or similar), Acceptance criteria (a checkbox list of testable statements; required for the AI evaluation), How I tested, and AI involvement (which agent or prompt produced which part). Each criterion must be verifiable from the diff, a command or a file.
+Every pull request uses the template `.github/PULL_REQUEST_TEMPLATE.md` with six parts: Summary, Changes, How to Test, Checklist, Risks, and Screenshots (for UI changes). Its Checklist is the minimum:
+
+- Code follows the project's coding guidelines
+- Tests have been added or updated
+- Lint passes (`npm run lint`)
+- All tests pass (`npm run test`)
+- Build succeeds (`npm run build`)
 
 The CI workflow `.github/workflows/ci.yml` runs on every pull request targeting `main` and on every push to `main`. On an Ubuntu runner with the current Node.js LTS it executes, in order, `npm ci`, `npm run lint`, `npm run test`, `npm run build`; a failure in any step blocks the merge. The test step runs the business rule tests and the HTTP API tests against a temporary data file (REF-050), so a change that breaks a validation message, the 409 rule, or the auto-decide limits fails before a reviewer reads it.
 
 Reviewers also check that the handbook change is in the same pull request, that no new log statement includes personal data such as `applicantName` (OPS-060), and that the Risks section states what a rollback would need.
-
-The workflow `.github/workflows/evaluate-pr.yml` ("Evaluate pull request (AI)") runs the `pr-evaluator` agent on every non-draft pull request. The agent scores the pull request against the criteria in the `## Acceptance criteria` section of the PR description, the same section of any issue linked with `Closes #N` / `Fixes #N` / `Resolves #N`, and the applicable items from `.github/evaluation/checklist.md`. The comment it posts is advisory evidence for the reviewer; it is not an approval and does not replace the review. Criteria must appear in the PR description or the linked issue: the agent never invents them. A pull request without an `## Acceptance criteria` section receives a NOT EVALUABLE notice for the PR-specific part.
 
 ## Definition of done
 
