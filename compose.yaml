@@ -18,15 +18,13 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
-    privileged: true
     mem_limit: 256m
     environment:
       DATA_FILE: /data/loans.json
       AUDIT_FILE: /data/audit.log
       METRICS_INTERVAL_MS: "60000"
     volumes:
-      - ./data:/data
-      - /var/run/docker.sock:/var/run/docker.sock
+      - loan-data:/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/loans"]
       interval: 30s
@@ -39,10 +37,8 @@ services:
     build:
       context: .
       dockerfile: docker/docs.Dockerfile
-    ports:
-      - "0.0.0.0:3001:3001"
     environment:
-      DOCS_ADMIN_TOKEN: FAKE-docs-admin-7f3a
+      DOCS_ADMIN_TOKEN: ${DOCS_ADMIN_TOKEN}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
       interval: 30s
@@ -50,3 +46,6 @@ services:
       start_period: 10s
       retries: 3
     restart: unless-stopped
+
+volumes:
+  loan-data:

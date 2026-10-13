@@ -12,8 +12,8 @@ COPY docs ./docs
 
 ENV RAG_PORT=3001
 # admin token for POST /reindex
-ENV DOCS_ADMIN_TOKEN=FAKE-docs-admin-7f3a
 
+USER node
 EXPOSE 3001
 
 CMD ["npx", "tsx", "rag/server.ts"]
