@@ -76,10 +76,33 @@ jobs:
               exit 1
             fi
           done
-          # a quoted applicant name (not the redacted placeholder) or an e-mail address means personal data leaked
-          if grep -qE '"applicantName":"[^"[]' "incident/$INCIDENT/postmortem.md" "incident/$INCIDENT/exec-summary.md" \
-             || grep -qE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}' "incident/$INCIDENT/postmortem.md" "incident/$INCIDENT/exec-summary.md"; then
-            echo "::error::the documents contain an applicant name or an e-mail address; personal data is not allowed (OPS-060, POL-070)"
+
+      # Uploaded before the personal-data check, so you can open the documents and see what the check found.
+      # Artifacts are visible only to people with access to this repository.
+      - name: Upload the documents
+        uses: actions/upload-artifact@v4
+        with:
+          name: postmortem-${{ inputs.incident }}
+          path: |
+            incident/${{ inputs.incident }}/postmortem.md
+            incident/${{ inputs.incident }}/exec-summary.md
+          if-no-files-found: error
+
+      # Prints only file and line, never the matched text, so the job log does not repeat the personal data.
+      - name: Check for personal data
+        run: |
+          cd "incident/$INCIDENT"
+          found=0
+          # a quoted applicant name ("[REDACTED]" is fine)
+          for hit in $(grep -nE '"applicantName":"[^"[]' postmortem.md exec-summary.md | cut -d: -f1,2); do
+            echo "::error file=incident/$INCIDENT/${hit%%:*},line=${hit##*:}::applicant name (OPS-060, POL-070)"; found=1
+          done
+          # any e-mail address, also staff addresses copied from emails.md (the agent must use roles only)
+          for hit in $(grep -nE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}' postmortem.md exec-summary.md | cut -d: -f1,2); do
+            echo "::error file=incident/$INCIDENT/${hit%%:*},line=${hit##*:}::e-mail address (blameless rule: roles only; OPS-060, POL-070)"; found=1
+          done
+          if [ "$found" = 1 ]; then
+            echo "Open the artifact postmortem-$INCIDENT, fix or regenerate the documents. The job summary is not published."
             exit 1
           fi
 
@@ -93,12 +116,3 @@ jobs:
             echo
             cat "incident/$INCIDENT/postmortem.md"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload the documents
-        uses: actions/upload-artifact@v4
-        with:
-          name: postmortem-${{ inputs.incident }}
-          path: |
-            incident/${{ inputs.incident }}/postmortem.md
-            incident/${{ inputs.incident }}/exec-summary.md
-          if-no-files-found: error
