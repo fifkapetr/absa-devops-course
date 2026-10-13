@@ -11,6 +11,7 @@ name: Generate postmortem (PIR)
 # the env of the "Write the postmortem" step with:
 #   COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
 # (the copilot-requests permission is then not needed).
+#
 
 on:
   workflow_dispatch:
@@ -46,8 +47,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
-          cache: 'npm'
+          node-version: "lts/*"
+          cache: "npm"
 
       - name: Install dependencies (handbook search for the agent)
         run: npm ci

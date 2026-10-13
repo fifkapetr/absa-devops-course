@@ -4,7 +4,7 @@ import type { InstallmentRequest, LoanApplication, LoanStatus } from '../shared/
 import { buildInstallmentSchedule, validateLoanInput } from '../shared/loanRules'
 import type { AuditLog } from './auditLog'
 import { HttpError, errorHandler, notFoundHandler } from './errors'
-import { cacheKey, getCached, putCached } from './installmentCache'
+import { cacheKey, cacheSize, getCached, putCached } from './installmentCache'
 import { requestLogger, type Logger } from './logger'
 import { createLoanService } from './loanService'
 import type { LoanStore } from './loanStore'
@@ -54,7 +54,7 @@ export function createApp({ store, logger, audit, version = '0.0.0', staticDir }
     const key = cacheKey(body)
     let entry = getCached(key)
     if (!entry) {
-      req.log.info({ request: body }, 'installment cache miss')
+      req.log.info({ cacheSize: cacheSize() }, 'installment cache miss')
       const startDate = body.requestedAt ? new Date(body.requestedAt) : new Date()
       entry = putCached(key, buildInstallmentSchedule(body, Number.isNaN(startDate.getTime()) ? new Date() : startDate))
     }

@@ -10,6 +10,7 @@ name: Evaluate pull request (AI)
 #
 # Model: set the repository variable PR_EVAL_MODEL to change it without editing this file.
 # Authentication: see generate-pir.yml (built-in token, or a COPILOT_PAT secret via COPILOT_GITHUB_TOKEN).
+#
 
 on:
   pull_request:
@@ -40,8 +41,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
-          cache: 'npm'
+          node-version: "lts/*"
+          cache: "npm"
 
       - run: npm ci
 

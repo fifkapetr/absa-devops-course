@@ -8,8 +8,11 @@ services:
     volumes:
       - ./docker/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - loan-api
-      - docs-search
+      loan-api:
+        condition: service_healthy
+      docs-search:
+        condition: service_healthy
+    restart: unless-stopped
 
   loan-api:
     build:
@@ -24,6 +27,13 @@ services:
     volumes:
       - ./data:/data
       - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/loans"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
 
   docs-search:
     build:
@@ -33,3 +43,10 @@ services:
       - "0.0.0.0:3001:3001"
     environment:
       DOCS_ADMIN_TOKEN: FAKE-docs-admin-7f3a
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped

@@ -4,7 +4,7 @@ This repository contains a small loan application management app used for GitHub
 
 ## Project Context
 
-Tredgate Loan is a teaching app, not a product. Everything runs locally with Node.js and npm: no Docker, no database, no external services. See `README.md` for the architecture, API and log format.
+Tredgate Loan is a teaching app, not a product. Tredgate Loan runs locally with Node.js and npm (`npm run dev`). Since 1.2.0, branch CZ-PRG-01 also runs a container pilot: `docker/`, `compose.yaml` (gateway on 8080, loan-api 3000, docs-search 3001). See `README.md` for the architecture, API and log format.
 
 ## Questions About the Handbook
 
@@ -83,3 +83,12 @@ Tredgate Loan is a teaching app, not a product. Everything runs locally with Nod
 - `npm run ops:verify` - Static OPS-001..011 checks of `docker/`, `.dockerignore`, `compose.yaml` (`--path <dir>` for another folder)
 - `npm run logs` - Cross-platform log reader (`--file`, `--service`, `--level`, `--from`, `--to`, `--grep`, `--msg`, `--redact`, `--count`, `--head`)
 - `npm run rag -- "question"` - Find the handbook sections relevant to a question (`npm run rag:index` rebuilds the index, `npm run rag:serve` runs the API alone, `npm run rag:mcp` the MCP server)
+
+## Operations Work
+
+- After changing `docker/**`, `compose.yaml` or `.dockerignore`, run `npx tsx ops/tools/verify.ts` and fix every FAIL before proposing the change.
+- Pin base images to an exact version. Never invent an image digest; leave a TODO if you do not know it.
+- Runtime stages run as a non-root user that owns its data folder.
+- Never read `.env` or paste its values. Secrets come from `.env` via `${VAR}`.
+- Never read `incident/*/logs/combined.log` wholesale; use `npx tsx ops/tools/logs.ts` with filters.
+- Tools must work in PowerShell and zsh: no bash, grep, jq or sed.
